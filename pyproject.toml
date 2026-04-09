@@ -60,3 +60,7 @@ members = [
 dev = [
     "pycodestyle>=2.14.0",
 ]
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true

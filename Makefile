@@ -99,6 +99,7 @@ deploy-corprun:
 		--image=us-central1-docker.pkg.dev/evalbench-dev/cr-images/eval_server:latest \
 		--port=3000 \
 		--memory=2Gi \
+		--min-instances=1 \
 		--service-account=crsvc-evalbench@evalbench-dev.iam.gserviceaccount.com \
 		--set-env-vars CLOUD_RUN=True,GOOGLE_CLOUD_PROJECT=evalbench-dev,MESOP_XSRF_CHECK=false \
 		--ingress=internal-and-cloud-load-balancing \
