@@ -105,7 +105,8 @@ def analyze_result(scores, experiment_config: dict[str, str]):
                     logging.info(f"Error: {row['comparison_error']}")
                 else:
                     logging.info("No analysis provided.")
-            continue
+            if metric_name != "goal_completion":
+                continue
 
         summary = analyze_one_metric(
             df=df,

@@ -5,7 +5,29 @@ import yaml
 import logging
 import json
 import subprocess
-from state import State
+import precompute_trends
+from summarizer import summarize_eval_scoring
+
+@me.stateclass
+class State:
+    selected_directory: str = ""
+    selected_tab: str = "Dashboard"
+    conversation_index: int = 0
+    eval_summaries: str = ""
+    eval_id_filter: str = ""
+    product_filter: str = ""
+    requester_filter: str = ""
+    dataset_filter: str = ""
+    sort_column: str = "date"
+    sort_descending: bool = True
+    open_dropdown: str = ""
+    selected_main_tab: str = "Status"
+    trends_product_filter: str = ""
+    cache_cleared_message: str = ""
+    ai_summary: str = ""
+    is_summarizing: bool = False
+    ai_score: float = 0.0
+    show_formula: bool = False
 
 try:
     # Try to read version from file (created during build)
@@ -23,10 +45,7 @@ except Exception:
     GIT_VERSION = "unknown"
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)s %(filename)s:%(lineno)d: %(message)s'
-)
+logging.basicConfig(level=logging.INFO)
 
 # Manually enable debug mode to bypass XSRF check if needed
 # (e.g. when running in container behind a proxy)
@@ -211,6 +230,232 @@ def on_load(e: me.LoadEvent):
 
 
 
+def status_component():
+    results_dir = get_results_dir()
+    directories = []
+    if os.path.exists(results_dir):
+        directories = [
+            d
+            for d in os.listdir(results_dir)
+            if os.path.isdir(os.path.join(results_dir, d))
+        ]
+    
+    with me.box(
+        style=me.Style(
+            background="#ffffff",
+            padding=me.Padding.all("24px"),
+            border_radius="12px",
+            border=me.Border.all(
+                me.BorderSide(width="1px", style="solid", color="#e0e0e0")
+            ),
+            box_shadow="0 2px 4px rgba(0,0,0,0.05)",
+        )
+    ):
+        me.text("Product status", type="headline-5")
+        me.box(style=me.Style(height="16px"))
+        me.text(f"Total Evaluation Jobs: {len(directories)}")
+        
+        me.box(style=me.Style(height="24px"))
+        me.text("Product Performance (Latest Eval per Product)", type="headline-6")
+        me.box(style=me.Style(height="8px"))
+        
+        # Build summary data from precomputed trends cache
+        data = []
+        cache_file = os.path.join(results_dir, "trends_cache.csv")
+        if os.path.exists(cache_file):
+            try:
+                cache_df = pd.read_csv(cache_file)
+                for _, row in cache_df.iterrows():
+                    data.append({
+                        'AI Score': row['ai_score'] if 'ai_score' in row else None,
+                        'Product': row['product'],
+                        'Dataset': row['dataset'] if 'dataset' in row and not pd.isna(row['dataset']) else "N/A",
+                        'Trajectory Matcher': row['trajectory'],
+                        'Goal Completion': row['goal_completion'] if 'goal_completion' in row else None,
+                        'Turn Count': row['turn_count'],
+                        'Executable': row['executable'],
+                        'Token Consumption': row['tokens'],
+                        'End-to-End Latency': row['latency'],
+                        'Run Time': row['run_time']
+                    })
+            except Exception as e:
+                logging.error(f"Error reading trends cache: {e}")
+        else:
+            logging.warning(f"Trends cache file not found at {cache_file}")
+                    
+        # Add requested default products if not present in data
+        default_products = ['spanner', 'bigtable', 'alloydb', 'memorystore', 'dms', 'datastream']
+        products_in_data = [d['Product'] for d in data]
+        for p in default_products:
+            if p not in products_in_data:
+                data.append({
+                    'Product': p,
+                    'Dataset': 'N/A',
+                    'Trajectory Matcher': None,
+                    'Turn Count': None,
+                    'Executable': None,
+                    'Token Consumption': None,
+                    'End-to-End Latency': None,
+                    'Run Time': None
+                })
+                    
+        if data:
+            df = pd.DataFrame(data)
+            # Filter out unknown products
+            df = df[df['Product'] != 'unknown']
+            
+            if not df.empty:
+                # Sort by Run Time descending to get the latest
+                df['Run Time'] = pd.to_datetime(df['Run Time'])
+                df = df.sort_values('Run Time', ascending=False, na_position='last')
+                
+                # Group by Product and Dataset and take the first (latest)
+                summary_df = df.groupby(["Product", "Dataset"]).first().reset_index()
+                
+                # Render table similar to lists tab
+                with me.box(
+                    style=me.Style(
+                        display="table",
+                        width="100%",
+                        border=me.Border.all(
+                            me.BorderSide(width="1px", color="#e5e7eb", style="solid")
+                        ),
+                        border_radius="8px",
+                        background="#ffffff",
+                        margin=me.Margin(top="16px"),
+                    )
+                ):
+                    # Header row
+                    with me.box(
+                        style=me.Style(
+                            display="table-row",
+                            background="#f8fafc",
+                            font_weight="bold",
+                            color="#475569",
+                            font_size="12px",
+                            text_transform="uppercase",
+                            letter_spacing="0.05em",
+                        )
+                    ):
+                        headers = [
+                            "Product",
+                            "Dataset",
+                            "AI Score",
+                            "Trajectory Matcher",
+                            "Goal Completion",
+                            "Turn Count",
+                            "Executable",
+                            "Token Consumption",
+                            "End-to-End Latency"
+                        ]
+                        for label in headers:
+                            with me.box(
+                                style=me.Style(
+                                    display="table-cell",
+                                    padding=me.Padding.symmetric(vertical="12px", horizontal="16px"),
+                                    text_align="center",
+                                    border=me.Border.all(
+                                        me.BorderSide(width="1px", color="#e2e8f0", style="solid")
+                                    ),
+                                    background="#f8fafc",
+                                )
+                            ):
+                                me.text(label)
+                                
+                    # Data rows
+                    for idx, row in summary_df.iterrows():
+                        is_na = pd.isna(row['Trajectory Matcher'])
+                        
+                        with me.box(
+                            style=me.Style(
+                                display="table-row",
+                                background="#ffffff" if idx % 2 == 0 else "#f9fafb",
+                            )
+                        ):
+                            def render_cell(text, color="#334155", cell_bg=None, on_click=None):
+                                style = me.Style(
+                                    display="table-cell",
+                                    padding=me.Padding.symmetric(vertical="12px", horizontal="16px"),
+                                    text_align="center",
+                                    border=me.Border.all(
+                                        me.BorderSide(width="1px", color="#e2e8f0", style="solid")
+                                    ),
+                                )
+                                if cell_bg:
+                                    style.background = cell_bg
+                                with me.box(style=style):
+                                    if on_click:
+                                        me.button(
+                                            text,
+                                            on_click=on_click,
+                                            style=me.Style(
+                                                color=color,
+                                                background="transparent",
+                                                border=me.Border.all(me.BorderSide(width="0px")),
+                                                padding=me.Padding.all("0px"),
+                                                margin=me.Margin.all("0px"),
+                                                font_size="inherit",
+                                                font_weight="500",
+                                                cursor="pointer",
+                                            )
+                                        )
+                                    else:
+                                        me.text(text, style=me.Style(color=color))
+                                    
+                            product_val = str(row['Product'])
+                            dataset_val = str(row['Dataset'])
+                            
+                            def make_click_handler(p_val, d_val):
+                                def handler(e: me.ClickEvent):
+                                    st = me.state(State)
+                                    st.selected_main_tab = "List"
+                                    st.product_filter = p_val
+                                    st.dataset_filter = d_val
+                                handler.__name__ = f"click_status_row_{p_val}_{d_val}"
+                                return handler
+                                
+                            click_handler = make_click_handler(product_val, dataset_val)
+                            render_cell(product_val, color="#2563eb", on_click=click_handler)
+                            render_cell(dataset_val, color="#2563eb", on_click=click_handler)
+                            
+                            if pd.isna(row['AI Score']):
+                                render_cell("N/A", color="#94a3b8", cell_bg="#e2e8f0")
+                            else:
+                                score_str = f"{row['AI Score']:.0f}%"
+                                render_cell(score_str, get_color_for_pct(score_str))
+                            
+                            if is_na:
+                                # Make cells gray for products with no data
+                                render_cell("N/A", color="#94a3b8", cell_bg="#e2e8f0")
+                                render_cell("N/A", color="#94a3b8", cell_bg="#e2e8f0")
+                                render_cell("N/A", color="#94a3b8", cell_bg="#e2e8f0")
+                                render_cell("N/A", color="#94a3b8", cell_bg="#e2e8f0")
+                                render_cell("N/A", color="#94a3b8", cell_bg="#e2e8f0")
+                                render_cell("N/A", color="#94a3b8", cell_bg="#e2e8f0")
+                                render_cell("N/A", color="#94a3b8", cell_bg="#e2e8f0")
+                            else:
+                                traj_str = f"{row['Trajectory Matcher']:.0f}%"
+                                render_cell(traj_str, get_color_for_pct(traj_str))
+                                
+                                if pd.isna(row['Goal Completion']):
+                                    render_cell("N/A", color="#94a3b8", cell_bg="#e2e8f0")
+                                else:
+                                    goal_str = f"{row['Goal Completion']:.0f}%"
+                                    render_cell(goal_str, get_color_for_pct(goal_str))
+                                
+                                render_cell(f"{row['Turn Count']:.1f}")
+                                
+                                exec_str = f"{row['Executable']:.0f}%"
+                                render_cell(exec_str, get_color_for_pct(exec_str))
+                                
+                                render_cell(f"{row['Token Consumption']:.0f}")
+                                render_cell(f"{row['End-to-End Latency']:.0f}")
+            else:
+                me.text("No evaluation data found for known products.")
+        else:
+            me.text("No evaluation data found in results directories.")
+
+
 def list_view_component(directories, results_dir):
     state = me.state(State)
     with me.box(
@@ -260,28 +505,39 @@ def list_view_component(directories, results_dir):
                     summaries = []
     
             if not summaries:
-                for d in sorted(directories):
-                    details = get_eval_details(results_dir, d)
-                    summaries.append({
-                        "id": d,
-                        "date": details.get("date", "N/A"),
-                        "product": details["product"],
-                        "requester": details.get("requester", "N/A"),
-                        "exact_match": details["exact_match"],
-                        "llmrater": details["llmrater"],
-                        "trajectory_matcher": details[
-                            "trajectory_matcher"
-                        ],
-                        "turn_count": details["turn_count"],
-                        "executable": details["executable"],
-                        "token_consumption": details[
-                            "token_consumption"
-                        ],
-                        "end_to_end_latency": details[
-                            "end_to_end_latency"
-                        ]
-                    })
-                s.eval_summaries = json.dumps(summaries)
+                cache_file = os.path.join(results_dir, "trends_cache.csv")
+                if os.path.exists(cache_file):
+                    try:
+                        cache_df = pd.read_csv(cache_file)
+                        for _, row in cache_df.iterrows():
+                            score = row['ai_score'] if 'ai_score' in row else 0.0
+                            if (score == 0.0 or pd.isna(score)) and 'ai_summary' in row and not pd.isna(row['ai_summary']):
+                                import re
+                                match = re.search(r"General Score:.*?(\d+(\.\d+)?)", row['ai_summary'])
+                                if match:
+                                    score = float(match.group(1))
+                                    
+                            summaries.append({
+                                "id": str(row['job_id']),
+                                "date": str(row['run_time']) if not pd.isna(row['run_time']) else "N/A",
+                                "product": str(row['product']) if not pd.isna(row['product']) else "N/A",
+                                "requester": str(row['requester']) if not pd.isna(row['requester']) else "N/A",
+                                "dataset": str(row['dataset']) if 'dataset' in row and not pd.isna(row['dataset']) else "N/A",
+                                "ai_score": f"{score:.0f}%" if not pd.isna(score) and score != 0.0 else "N/A",
+                                "exact_match": f"{row['exact_match']:.0f}%" if not pd.isna(row['exact_match']) else "N/A",
+                                "llmrater": f"{row['llmrater']:.0f}%" if not pd.isna(row['llmrater']) else "N/A",
+                                "trajectory_matcher": f"{row['trajectory']:.0f}%" if not pd.isna(row['trajectory']) else "N/A",
+                                "goal_completion": f"{row['goal_completion']:.0f}%" if 'goal_completion' in row and not pd.isna(row['goal_completion']) else "N/A",
+                                "turn_count": f"{row['turn_count']:.1f}" if not pd.isna(row['turn_count']) else "N/A",
+                                "executable": f"{row['executable']:.0f}%" if not pd.isna(row['executable']) else "N/A",
+                                "token_consumption": f"{row['tokens']:.0f}" if not pd.isna(row['tokens']) else "N/A",
+                                "end_to_end_latency": f"{row['latency']:.0f}" if not pd.isna(row['latency']) else "N/A"
+                            })
+                        s.eval_summaries = json.dumps(summaries)
+                    except Exception as e:
+                        logging.error(f"Error reading trends cache: {e}")
+                else:
+                    logging.warning(f"Trends cache file not found at {cache_file}")
     
             # Sort by selected column
             reverse = state.sort_descending
@@ -296,6 +552,7 @@ def list_view_component(directories, results_dir):
                     "llmrater",
                     "trajectory_matcher",
                     "executable",
+                    "ai_score",
                 ]:
                     if val == "N/A":
                         return -1.0 if reverse else 101.0
@@ -341,11 +598,13 @@ def list_view_component(directories, results_dir):
                     products = filters_data.get("products", [])
                     requesters = filters_data.get("requesters", [])
                     eval_ids = filters_data.get("eval_ids", [])
+                    datasets = filters_data.get("datasets", [])
                 except Exception as e:
                     logging.error(f"Error reading filters cache: {e}")
                     products = []
                     requesters = []
                     eval_ids = []
+                    datasets = []
             else:
                 products = sorted(
                     list(
@@ -366,6 +625,27 @@ def list_view_component(directories, results_dir):
                     )
                 )
                 eval_ids = sorted([x["id"] for x in all_summaries])
+                datasets = sorted(
+                    list(
+                        set(
+                            x.get("dataset", "N/A")
+                            for x in all_summaries
+                            if x.get("dataset", "N/A") != "N/A"
+                        )
+                    )
+                )
+            
+            # Fallback for datasets if empty from cache
+            if not datasets and all_summaries:
+                datasets = sorted(
+                    list(
+                        set(
+                            x.get("dataset", "N/A")
+                            for x in all_summaries
+                            if x.get("dataset", "N/A") != "N/A"
+                        )
+                    )
+                )
     
             # Apply filters
             if state.eval_id_filter:
@@ -386,6 +666,13 @@ def list_view_component(directories, results_dir):
                     for x in summaries
                     if x.get("requester", "N/A")
                     == state.requester_filter
+                ]
+            if state.dataset_filter:
+                summaries = [
+                    x
+                    for x in summaries
+                    if x.get("dataset", "N/A")
+                    == state.dataset_filter
                 ]
     
             # Render filters UI
@@ -712,6 +999,107 @@ def list_view_component(directories, results_dir):
                                         ),
                                     )
     
+                # Dataset Filter with Floating Autocomplete
+                def toggle_dataset_dropdown(e: me.ClickEvent):
+                    st = me.state(State)
+                    if st.open_dropdown == "dataset":
+                        st.open_dropdown = ""
+                    else:
+                        st.open_dropdown = "dataset"
+    
+                def make_dataset_dropdown_handler(val):
+                    def handler(e: me.ClickEvent):
+                        st = me.state(State)
+                        st.dataset_filter = val
+                        st.open_dropdown = ""
+    
+                    handler.__name__ = f"click_dataset_dd_{val}"
+                    return handler
+    
+                mk_dataset_dd = make_dataset_dropdown_handler
+    
+                with me.box(
+                    style=me.Style(
+                        position="relative",
+                        width="200px",
+                    )
+                ):
+                    # The Box acting as Dropdown Trigger
+                    with me.box(
+                        style=me.Style(
+                            background="#ffffff",
+                            border=me.Border.all(
+                                me.BorderSide(
+                                    width="1px",
+                                    color="#e2e8f0",
+                                )
+                            ),
+                            border_radius="4px",
+                            padding=me.Padding.all("8px"),
+                            cursor="pointer",
+                        ),
+                        on_click=toggle_dataset_dropdown,
+                    ):
+                        me.text(
+                            state.dataset_filter
+                            if state.dataset_filter
+                            else "Filter by Dataset",
+                            style=me.Style(
+                                color="#1f2937"
+                            ),
+                        )
+    
+                    # The Popup List
+                    if state.open_dropdown == "dataset":
+                        with me.box(
+                            style=me.Style(
+                                position="absolute",
+                                top="100%",
+                                left="0",
+                                z_index=10,
+                                background="#ffffff",
+                                border=me.Border.all(
+                                    me.BorderSide(
+                                        width="1px",
+                                        color="#e2e8f0",
+                                    )
+                                ),
+                                border_radius="4px",
+                                width="100%",
+                                max_height="200px",
+                                overflow_y="auto",
+                            )
+                        ):
+                            # All option
+                            with me.box(
+                                style=me.Style(
+                                    padding=me.Padding.all("8px"),
+                                    cursor="pointer",
+                                ),
+                                on_click=mk_dataset_dd(""),
+                            ):
+                                me.text(
+                                    "All",
+                                    style=me.Style(
+                                        color="#1f2937"
+                                    ),
+                                )
+    
+                            for d in datasets:
+                                with me.box(
+                                    style=me.Style(
+                                        padding=me.Padding.all("8px"),
+                                        cursor="pointer",
+                                    ),
+                                    on_click=mk_dataset_dd(d),
+                                ):
+                                    me.text(
+                                        d,
+                                        style=me.Style(
+                                            color="#1f2937"
+                                        ),
+                                    )
+    
             def on_sort_click(col_name):
                 s = me.state(State)
                 if s.sort_column == col_name:
@@ -741,18 +1129,30 @@ def list_view_component(directories, results_dir):
             def click_exec(e):
                 on_sort_click("executable")
     
+            def click_dataset(e):
+                on_sort_click("dataset")
+
             def click_tokens(e):
                 on_sort_click("token_consumption")
     
             def click_latency(e):
                 on_sort_click("end_to_end_latency")
     
+            def click_goal_comp(e):
+                on_sort_click("goal_completion")
+    
+            def click_ai_score(e):
+                on_sort_click("ai_score")
+
             sort_handlers = {
                 "id": click_id,
                 "date": click_date,
                 "product": click_product,
                 "requester": click_requester,
+                "dataset": click_dataset,
+                "ai_score": click_ai_score,
                 "trajectory_matcher": click_traj,
+                "goal_completion": click_goal_comp,
                 "turn_count": click_turns,
                 "executable": click_exec,
                 "token_consumption": click_tokens,
@@ -844,10 +1244,17 @@ def list_view_component(directories, results_dir):
                         ("Date", "date", "24ch"),
                         ("Product", "product", None),
                         ("Requester", "requester", None),
+                        ("Dataset", "dataset", None),
+                        ("AI Score", "ai_score", "10ch"),
                         (
                             "Trajectory Matcher",
                             "trajectory_matcher",
                             "18ch",
+                        ),
+                        (
+                            "Goal Completion",
+                            "goal_completion",
+                            "16ch",
                         ),
                         ("Turn Count", "turn_count", "12ch"),
                         ("Executable", "executable", "12ch"),
@@ -871,7 +1278,10 @@ def list_view_component(directories, results_dir):
                     date_val = item.get("date", "N/A")
                     prod = item["product"]
                     req_val = item.get("requester", "N/A")
+                    dataset_val = item.get("dataset", "N/A")
+                    ai_score_val = item.get("ai_score", "N/A")
                     traj = item.get("trajectory_matcher", "N/A")
+                    goal_comp = item.get("goal_completion", "N/A")
                     turns = item.get("turn_count", "N/A")
                     exec_val = item.get("executable", "N/A")
                     tokens = item.get("token_consumption", "N/A")
@@ -988,6 +1398,54 @@ def list_view_component(directories, results_dir):
                                     color="#334155"
                                 ),
                             )
+                        
+                        with me.box(
+                            style=me.Style(
+                                display="table-cell",
+                                padding=me.Padding.symmetric(
+                                    vertical="10px", horizontal="16px"
+                                ),
+                                text_align="center",
+                                border=me.Border.all(
+                                    me.BorderSide(
+                                        width="1px",
+                                        color="#e2e8f0",
+                                        style="solid",
+                                    )
+                                ),
+                            )
+                        ):
+                            me.text(
+                                dataset_val,
+                                style=me.Style(
+                                    color="#334155"
+                                ),
+                            )
+                        
+                        with me.box(
+                            style=me.Style(
+                                display="table-cell",
+                                padding=me.Padding.symmetric(
+                                    vertical="10px", horizontal="16px"
+                                ),
+                                text_align="center",
+                                border=me.Border.all(
+                                    me.BorderSide(
+                                        width="1px",
+                                        color="#e2e8f0",
+                                        style="solid",
+                                    )
+                                ),
+                                width="10ch",
+                                white_space="nowrap",
+                            )
+                        ):
+                            me.text(
+                                ai_score_val,
+                                style=me.Style(
+                                    color=get_color_for_pct(ai_score_val)
+                                ),
+                            )
     
                         with me.box(
                             style=me.Style(
@@ -1011,6 +1469,31 @@ def list_view_component(directories, results_dir):
                                 traj,
                                 style=me.Style(
                                     color=get_color_for_pct(traj)
+                                ),
+                            )
+    
+                        with me.box(
+                            style=me.Style(
+                                display="table-cell",
+                                padding=me.Padding.symmetric(
+                                    vertical="10px", horizontal="16px"
+                                ),
+                                text_align="center",
+                                border=me.Border.all(
+                                    me.BorderSide(
+                                        width="1px",
+                                        color="#e2e8f0",
+                                        style="solid",
+                                    )
+                                ),
+                                width="16ch",
+                                white_space="nowrap",
+                            )
+                        ):
+                            me.text(
+                                goal_comp,
+                                style=me.Style(
+                                    color=get_color_for_pct(goal_comp)
                                 ),
                             )
     
@@ -1149,6 +1632,30 @@ def render_app_content():
             state.selected_directory = ""
             state.conversation_index = 0
             me.navigate("/")
+            
+        def on_clear_cache_click(e: me.ClickEvent):
+            results_dir = get_results_dir()
+            processed_dirs_file = os.path.join(results_dir, "processed_dirs.json")
+            trends_cache_file = os.path.join(results_dir, "trends_cache.csv")
+            filters_cache_file = os.path.join(results_dir, "filters_cache.json")
+            
+            try:
+                if os.path.exists(processed_dirs_file):
+                    os.remove(processed_dirs_file)
+                if os.path.exists(trends_cache_file):
+                    os.remove(trends_cache_file)
+                if os.path.exists(filters_cache_file):
+                    os.remove(filters_cache_file)
+                
+                logging.info("Cleared precomputed files. Triggering precompute...")
+                
+                import threading
+                threading.Thread(target=precompute_trends.precompute).start()
+                
+                state.cache_cleared_message = "Cache cleared. Precompute triggered in background."
+            except Exception as ex:
+                logging.error(f"Error clearing cache: {ex}")
+                state.cache_cleared_message = f"Error clearing cache: {ex}"
     
         # Full-width header bar
         with me.box(
@@ -1177,15 +1684,54 @@ def render_app_content():
                 ),
             )
     
-            if GIT_VERSION != "unknown":
-                with me.box(
-                    style=me.Style(
-                        font_size="12px",
-                        color="#94a3b8",
-                    )
-                ):
-                    me.markdown(
-                        f"[Git: {GIT_VERSION}](https://github.com/GoogleCloudPlatform/evalbench/commit/{GIT_VERSION})"
+            import time
+            cache_file = os.path.join(results_dir, "trends_cache.csv")
+            cache_status = "Not Ready"
+            cache_color = "#ef4444" # Red
+            
+            if os.path.exists(cache_file):
+                mtime = os.path.getmtime(cache_file)
+                elapsed = time.time() - mtime
+                if elapsed < 600: # 10 minutes
+                    cache_status = "Fresh"
+                    cache_color = "#10b981" # Green
+                else:
+                    cache_status = "Stale"
+                    cache_color = "#f59e0b" # Yellow
+                    
+            with me.box(
+                style=me.Style(
+                    display="flex",
+                    flex_direction="column",
+                    align_items="flex-end",
+                    gap="4px",
+                )
+            ):
+                if GIT_VERSION != "unknown":
+                    with me.box(
+                        style=me.Style(
+                            font_size="12px",
+                            color="#94a3b8",
+                        )
+                    ):
+                        me.markdown(
+                            f"[Git: {GIT_VERSION}](https://github.com/GoogleCloudPlatform/evalbench/commit/{GIT_VERSION})"
+                        )
+                
+                with me.box(style=me.Style(display="flex", align_items="center", gap="6px", font_size="12px")):
+                    me.box(style=me.Style(width="8px", height="8px", border_radius="50%", background=cache_color))
+                    me.text(f"Cache: {cache_status}", style=me.Style(font_weight="500", color="#94a3b8"))
+                    me.button(
+                        "Clear Cache",
+                        on_click=on_clear_cache_click,
+                        style=me.Style(
+                            color="transparent",
+                            font_size="10px",
+                            background="transparent",
+                            padding=me.Padding.symmetric(vertical="2px", horizontal="4px"),
+                            border_radius="3px",
+                            margin=me.Margin(left="10px"),
+                        )
                     )
     
         # Centered content at 90% browser width
@@ -1203,30 +1749,26 @@ def render_app_content():
                 color="#1e293b",
             )
         ):
-            # Cache freshness indicator
-            import time
-            cache_file = os.path.join(results_dir, "trends_cache.csv")
-            cache_status = "Not Ready"
-            cache_color = "#ef4444" # Red
-            
-            if os.path.exists(cache_file):
-                mtime = os.path.getmtime(cache_file)
-                elapsed = time.time() - mtime
-                if elapsed < 600: # 10 minutes
-                    cache_status = "Fresh"
-                    cache_color = "#10b981" # Green
-                else:
-                    cache_status = "Stale"
-                    cache_color = "#f59e0b" # Yellow
-                    
-            with me.box(style=me.Style(display="flex", align_items="center", gap="8px", font_size="12px", margin=me.Margin(bottom="8px"))):
-                me.box(style=me.Style(width="12px", height="12px", border_radius="50%", background=cache_color))
-                me.text(f"Cache Status: {cache_status}", style=me.Style(font_weight="600", color="#64748b"))
+
     
             if state.selected_directory:
     
                 def on_tab_change(e: me.ButtonToggleChangeEvent):
                     state.selected_tab = e.value
+                    
+                def on_generate_summary_click(e: me.ClickEvent):
+                    state = me.state(State)
+                    results_dir_full = os.path.join(results_dir, state.selected_directory)
+                    state.ai_summary = summarize_eval_scoring(results_dir_full)
+                    # Parse score
+                    import re
+                    match = re.search(r"\*\*General Score:\s*(\d+(\.\d+)?)[^*]*\*\*", state.ai_summary)
+                    if match:
+                        state.ai_score = float(match.group(1))
+                        
+                def on_info_click(e: me.ClickEvent):
+                    state = me.state(State)
+                    state.show_formula = not state.show_formula
     
                 me.button_toggle(
                     value=state.selected_tab,
@@ -1242,7 +1784,6 @@ def render_app_content():
                         me.ButtonToggleButton(
                             label="Conversations", value="Conversations"
                         ),
-                        # me.ButtonToggleButton(label="Summary", value="Summary"),
                     ],
                     on_change=on_tab_change,
                 )
@@ -1290,6 +1831,51 @@ def render_app_content():
                     dashboard.dashboard_component(
                         os.path.join(results_dir, state.selected_directory)
                     )
+                    
+                    me.divider()
+                    me.text("AI Summary", type="headline-5")
+                    
+                    if not state.ai_summary and state.selected_directory:
+                        trends_cache_file = os.path.join(results_dir, "trends_cache.csv")
+                        if os.path.exists(trends_cache_file):
+                            try:
+                                cache_df = pd.read_csv(trends_cache_file)
+                                run_data = cache_df[cache_df['job_id'] == state.selected_directory]
+                                if not run_data.empty and 'ai_summary' in run_data.columns:
+                                    summary = run_data['ai_summary'].values[0]
+                                    if not pd.isna(summary) and summary != "N/A":
+                                        state.ai_summary = summary
+                                if not run_data.empty and 'ai_score' in run_data.columns:
+                                    score = run_data['ai_score'].values[0]
+                                    if not pd.isna(score):
+                                        state.ai_score = float(score)
+                                
+                                # Fallback if score was not parsed correctly in cache
+                                if state.ai_score == 0.0 and state.ai_summary:
+                                    import re
+                                    match = re.search(r"General Score:.*?(\d+(\.\d+)?)", state.ai_summary)
+                                    if match:
+                                        state.ai_score = float(match.group(1))
+                            except Exception as e:
+                                logging.error(f"Error reading AI summary from cache: {e}")
+                    
+                    if not state.ai_summary:
+                        me.button("Generate AI Summary", on_click=on_generate_summary_click)
+                    
+                    if state.ai_summary:
+                        with me.box(style=me.Style(display="flex", align_items="flex-start", margin=me.Margin(bottom="8px"))):
+                            me.text(f"General Score: {state.ai_score}", type="headline-6")
+                            with me.box(style=me.Style(margin=me.Margin(left="2px"), cursor="pointer"), on_click=on_info_click):
+                                me.text("ⓘ", style=me.Style(color="#2563eb", font_size="12px"))
+                        
+                        if state.show_formula:
+                            me.text("Formula: 0.4 * goal_completion + 0.2 * trajectory_matcher + 0.2 * behavioral_metrics + 0.2 * parameter_analysis", style=me.Style(font_size="14px", color="#6b7280", margin=me.Margin(bottom="16px")))
+                        
+                        # Strip score from summary if present to avoid duplication
+                        import re
+                        clean_summary = re.sub(r"^\s*\*\*General Score:\s*\d+(\.\d+)?[^*]*\*\*\s*", "", state.ai_summary)
+                        me.markdown(clean_summary)
+                        
                 elif state.selected_tab == "Conversations":
     
                     def on_prev_conversation(e: me.ClickEvent):
@@ -1354,20 +1940,6 @@ def render_app_content():
                         me.text(
                             f"scores.csv not found in {state.selected_directory}"
                         )
-                elif state.selected_tab == "Summary":
-                        summary_path = os.path.join(
-                            results_dir, state.selected_directory, "summary.csv"
-                        )
-                        if os.path.exists(summary_path):
-                            try:
-                                df = pd.read_csv(summary_path)
-                                me.table(data_frame=df)
-                            except Exception as e:
-                                me.text(f"Error reading summary.csv: {e}")
-                        else:
-                            me.text(
-                                f"summary.csv not found in {state.selected_directory}"
-                            )
 
 
             else:
@@ -1381,6 +1953,7 @@ def render_app_content():
                                 me.button_toggle(
                                     value=state.selected_main_tab,
                                     buttons=[
+                                        me.ButtonToggleButton(label="Status", value="Status"),
                                         me.ButtonToggleButton(label="List", value="List"),
                                         me.ButtonToggleButton(label="Charts", value="Charts"),
                                     ],
@@ -1395,6 +1968,8 @@ def render_app_content():
                                     me.text(f"Error: {e}")
                             elif state.selected_main_tab == "Charts":
                                 trends_component()
+                            elif state.selected_main_tab == "Status":
+                                status_component()
 
                 
     except Exception as e:

@@ -2,7 +2,7 @@ import os
 import logging
 import mesop as me
 import pandas as pd
-from state import State
+from main import State
 
 def get_results_dir():
     # Try to read from environment variable

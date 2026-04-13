@@ -7,10 +7,10 @@ requires-python = ">=3.10"
 dependencies = [
     "gevent>=25.9.1",
     "gunicorn>=25.1.0",
-    "matplotlib>=3.10.8",
     "mesop>=1.2.1",
     "pandas>=2.3.3",
     "pyaml>=26.2.1",
-    "plotly>=5.18.0",
-    "kaleido>=0.2.1",
 ]
+
+[tool.setuptools]
+packages = []

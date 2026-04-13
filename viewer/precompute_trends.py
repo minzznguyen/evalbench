@@ -24,6 +24,126 @@ def get_results_dir():
 
     return results_dir_candidates[1]  # Fallback to default
 
+
+def process_directory(d, results_dir):
+    run_dir = os.path.join(results_dir, d)
+    configs_file = os.path.join(run_dir, "configs.csv")
+    summary_file = os.path.join(run_dir, "summary.csv")
+
+    if not (os.path.exists(configs_file) and os.path.exists(summary_file)):
+        return None
+
+    try:
+        # Read configs
+        configs_df = pd.read_csv(configs_file)
+
+        # Extract requester, product and dataset
+        requester_row = configs_df[configs_df['config'].str.contains('guitar_requester', na=False)]
+        product_row = configs_df[configs_df['config'].isin(['experiment_config.product_name', 'experiment_config.poduct_name'])]
+
+        requester = requester_row['value'].values[0] if not requester_row.empty else "unknown"
+        product = product_row['value'].values[0] if not product_row.empty else "unknown"
+        dataset_path = configs_df[configs_df['config'] == 'experiment_config.dataset_config']['value'].values[0] if 'experiment_config.dataset_config' in configs_df['config'].values else "unknown"
+        dataset = os.path.basename(dataset_path) if dataset_path != "unknown" else "unknown"
+
+        # Read summary
+        summary_df = pd.read_csv(summary_file)
+
+        # Extract metrics
+        latency_row = summary_df[summary_df['metric_name'] == 'end_to_end_latency']
+        token_row = summary_df[summary_df['metric_name'] == 'token_consumption']
+        trajectory_row = summary_df[summary_df['metric_name'] == 'trajectory_matcher']
+        executable_row = summary_df[summary_df['metric_name'] == 'executable']
+        turn_count_row = summary_df[summary_df['metric_name'] == 'turn_count']
+        exact_match_row = summary_df[summary_df['metric_name'] == 'exact_match']
+        llmrater_row = summary_df[summary_df['metric_name'] == 'llmrater']
+        goal_completion_row = summary_df[summary_df['metric_name'] == 'goal_completion']
+
+        latency = float(latency_row['metric_score'].values[0]) if not latency_row.empty else 0.0
+        tokens = float(token_row['metric_score'].values[0]) if not token_row.empty else 0.0
+        turn_count = float(turn_count_row['metric_score'].values[0]) if not turn_count_row.empty else 0.0
+
+        def get_metric_pct(row):
+            if not row.empty:
+                correct = float(row['correct_results_count'].values[0])
+                total = float(row['total_results_count'].values[0])
+                return (correct / total) * 100 if total > 0 else 0.0
+            return 0.0
+
+        trajectory = get_metric_pct(trajectory_row)
+        executable = get_metric_pct(executable_row)
+        exact_match = get_metric_pct(exact_match_row)
+        llmrater = get_metric_pct(llmrater_row)
+        goal_completion = get_metric_pct(goal_completion_row)
+
+        if goal_completion == 0.0 and goal_completion_row.empty:
+            # Fallback to results.csv or scores.csv if goal_completion is missing from summary.csv
+            results_file = os.path.join(results_dir, d, "results.csv")
+            scores_file = os.path.join(results_dir, d, "scores.csv")
+
+            file_to_read = None
+            if os.path.exists(results_file):
+                file_to_read = results_file
+            elif os.path.exists(scores_file):
+                file_to_read = scores_file
+
+            if file_to_read:
+                try:
+                    df = pd.read_csv(file_to_read)
+                    if 'comparator' in df.columns and 'score' in df.columns:
+                        gc_scores = df[df['comparator'] == 'goal_completion']
+                        if not gc_scores.empty:
+                            correct = len(gc_scores[gc_scores['score'] == 100.0])
+                            total = len(gc_scores)
+                            goal_completion = (correct / total) * 100 if total > 0 else 0.0
+                            logging.info(f"Computed goal_completion from {os.path.basename(file_to_read)} for {d}: {goal_completion}")
+                except Exception as e:
+                    logging.warning(f"Error reading {os.path.basename(file_to_read)} for {d}: {e}")
+
+        run_time = summary_df['run_time'].values[0] if not summary_df.empty else "unknown"
+        if run_time != "unknown":
+            try:
+                run_time = pd.to_datetime(run_time).strftime('%Y-%m-%d')
+            except Exception as e:
+                logging.warning(f"Failed to parse run_time '{run_time}': {e}")
+
+        # Call AI Summarizer
+        ai_summary = "N/A"
+        ai_score = 0.0
+        try:
+            from summarizer import summarize_eval_scoring
+            ai_summary = summarize_eval_scoring(run_dir)
+
+            # Parse score from summary
+            import re
+            match = re.search(r"General Score:.*?(\d+(\.\d+)?)", ai_summary)
+            if match:
+                ai_score = float(match.group(1))
+        except Exception as e:
+            logging.error(f"Error generating AI summary for {d}: {e}")
+
+        return {
+            'run_time': run_time,
+            'requester': requester,
+            'product': product,
+            'dataset': dataset,
+            'latency': latency,
+            'tokens': tokens,
+            'trajectory': trajectory,
+            'executable': executable,
+            'turn_count': turn_count,
+            'exact_match': exact_match,
+            'llmrater': llmrater,
+            'goal_completion': goal_completion,
+            'job_id': d,
+            'ai_score': ai_score,
+            'ai_summary': ai_summary
+        }
+    except Exception as e:
+        logging.error(f"Error reading data from {d}: {e}")
+        return None
+
+
 def precompute():
     results_dir = get_results_dir()
     logging.info(f"Reading results from {results_dir}")
@@ -72,6 +192,7 @@ def precompute():
     data = []
     products = set()
     requesters = set()
+    datasets = set()
     eval_ids = all_directories
     
     # If we have existing data, populate products and requesters from it
@@ -83,61 +204,23 @@ def precompute():
 
     successfully_processed = []
     
-    for i, d in enumerate(new_directories):
-        if (i + 1) % 10 == 0 or i == total_new - 1:
-            logging.info(f"Precompute progress: {(i + 1) / total_new * 100:.1f}% ({i + 1}/{total_new})")
-        run_dir = os.path.join(results_dir, d)
-        configs_file = os.path.join(run_dir, "configs.csv")
-        summary_file = os.path.join(run_dir, "summary.csv")
+    from concurrent.futures import ThreadPoolExecutor
+    
+    logging.info(f"Processing {len(new_directories)} new directories with 10 threads...")
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(process_directory, d, results_dir) for d in new_directories]
         
-        if os.path.exists(configs_file) and os.path.exists(summary_file):
-            try:
-                # Read configs
-                configs_df = pd.read_csv(configs_file)
-                
-                # Extract requester and product
-                requester_row = configs_df[configs_df['config'].str.contains('guitar_requester', na=False)]
-                product_row = configs_df[configs_df['config'].isin(['experiment_config.product_name', 'experiment_config.poduct_name'])]
-                
-                requester = requester_row['value'].values[0] if not requester_row.empty else "unknown"
-                product = product_row['value'].values[0] if not product_row.empty else "unknown"
-                
-                if product != "unknown" and str(product).strip() != "":
-                    products.add(product)
-                if requester != "unknown" and str(requester).strip() != "":
-                    requesters.add(requester)
-                
-                # Read summary
-                summary_df = pd.read_csv(summary_file)
-                
-                # Extract metrics
-                latency_row = summary_df[summary_df['metric_name'] == 'end_to_end_latency']
-                token_row = summary_df[summary_df['metric_name'] == 'token_consumption']
-                trajectory_row = summary_df[summary_df['metric_name'] == 'trajectory_matcher']
-                
-                latency = float(latency_row['metric_score'].values[0]) if not latency_row.empty else 0.0
-                tokens = float(token_row['metric_score'].values[0]) if not token_row.empty else 0.0
-                trajectory = float(trajectory_row['metric_score'].values[0]) if not trajectory_row.empty else 0.0
-                
-                run_time = summary_df['run_time'].values[0] if not summary_df.empty else "unknown"
-                if run_time != "unknown":
-                    try:
-                        run_time = pd.to_datetime(run_time).strftime('%Y-%m-%d')
-                    except Exception as e:
-                        logging.warning(f"Failed to parse run_time '{run_time}': {e}")
-                
-                data.append({
-                    'run_time': run_time,
-                    'requester': requester,
-                    'product': product,
-                    'latency': latency,
-                    'tokens': tokens,
-                    'trajectory': trajectory,
-                    'job_id': d
-                })
-                successfully_processed.append(d)
-            except Exception as e:
-                print(f"Error reading data from {d}: {e}")
+        for future in futures:
+            res = future.result()
+            if res:
+                data.append(res)
+                successfully_processed.append(res['job_id'])
+                if res['product'] != "unknown" and str(res['product']).strip() != "":
+                    products.add(res['product'])
+                if res['requester'] != "unknown" and str(res['requester']).strip() != "":
+                    requesters.add(res['requester'])
+                if res['dataset'] != "unknown":
+                    datasets.add(res['dataset'])
                 
     if not data and existing_df.empty:
         logging.warning("No data found in any run directory and no existing cache.")
@@ -163,7 +246,8 @@ def precompute():
     filters_data = {
         "products": sorted(list(products)),
         "requesters": sorted(list(requesters)),
-        "eval_ids": sorted(list(eval_ids))
+        "eval_ids": sorted(list(eval_ids)),
+        "datasets": sorted(list(datasets))
     }
     with open(filters_file, "w") as f:
         json.dump(filters_data, f, indent=2)
