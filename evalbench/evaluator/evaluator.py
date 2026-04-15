@@ -151,7 +151,7 @@ class Evaluator:
             except Exception as e:
 
                 logging.error(
-                    f"Failed to acquire DB connection from queue: {e}")
+                    f"Failed to acquire DB connection from queue for database '{eval_output.get('database')}': {e}")
                 eval_output["generated_error"] = f"Failed to acquire DB connection: {e}"
                 record_successful_sql_exec(progress_reporting)
                 work = scorework.ScorerWork(

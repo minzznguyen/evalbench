@@ -7,6 +7,7 @@ import json
 import subprocess
 import precompute_trends
 from summarizer import summarize_eval_scoring
+from ai_comparer import compare_evals
 
 @me.stateclass
 class State:
@@ -29,6 +30,13 @@ class State:
     ai_score: float = 0.0
     show_formula: bool = False
     rows_to_show: int = 10
+    selected_evals: str = "[]"
+    base_product: str = ""
+    base_dataset: str = ""
+    compare_tab_visible: bool = False
+    compare_evals: str = "[]"
+    select_mode_active: bool = False
+    ai_comparison: str = ""
 
 try:
     # Try to read version from file (created during build)
@@ -191,7 +199,7 @@ def get_eval_details(results_dir, dir_name):
                 elif name == "token_consumption":
                     details["token_consumption"] = f"{correct:.0f}"
                 elif name == "end_to_end_latency":
-                    details["end_to_end_latency"] = f"{correct:.0f}"
+                    details["end_to_end_latency"] = f"{correct / 60000.0:.2f}m"
         except Exception as e:
             logging.warning(f"Error reading summary.csv for {dir_name}: {e}")
 
@@ -454,7 +462,10 @@ def status_component():
                                 render_cell(exec_str, get_color_for_pct(exec_str))
                                 
                                 render_cell(f"{row['Token Consumption']:.0f}")
-                                render_cell(f"{row['End-to-End Latency']:.0f}")
+                                if pd.isna(row['End-to-End Latency']):
+                                    render_cell("N/A")
+                                else:
+                                    render_cell(f"{row['End-to-End Latency'] / 60000.0:.2f}m")
             else:
                 me.text("No evaluation data found for known products.")
         else:
@@ -463,6 +474,10 @@ def status_component():
 
 def list_view_component(directories, results_dir):
     state = me.state(State)
+    try:
+        selected_evals_list = json.loads(state.selected_evals)
+    except Exception:
+        selected_evals_list = []
     with me.box(
         style=me.Style(
             background="#ffffff",
@@ -536,7 +551,7 @@ def list_view_component(directories, results_dir):
                                 "turn_count": f"{row['turn_count']:.1f}" if not pd.isna(row['turn_count']) else "N/A",
                                 "executable": f"{row['executable']:.0f}%" if not pd.isna(row['executable']) else "N/A",
                                 "token_consumption": f"{row['tokens']:.0f}" if not pd.isna(row['tokens']) else "N/A",
-                                "end_to_end_latency": f"{row['latency']:.0f}" if not pd.isna(row['latency']) else "N/A"
+                                "end_to_end_latency": f"{row['latency'] / 60000.0:.2f}m" if not pd.isna(row['latency']) else "N/A"
                             })
                         s.eval_summaries = json.dumps(summaries)
                     except Exception as e:
@@ -586,7 +601,7 @@ def list_view_component(directories, results_dir):
                 return str(val)
     
             summaries.sort(key=get_sort_key, reverse=reverse)
-            
+    
             # Extract unique values for filters from ALL summaries
             all_summaries = []
             if s.eval_summaries:
@@ -679,6 +694,22 @@ def list_view_component(directories, results_dir):
                     if x.get("dataset", "N/A")
                     == state.dataset_filter
                 ]
+            
+            if state.base_product:
+                summaries = [
+                    x
+                    for x in summaries
+                    if x["product"] == state.base_product
+                ]
+            if state.base_dataset:
+                summaries = [
+                    x
+                    for x in summaries
+                    if x.get("dataset", "N/A") == state.base_dataset
+                ]
+            
+            # Limit number of rows to show after filter/sort
+            summaries = summaries[:state.rows_to_show]
     
             # Limit number of rows to show after filter/sort
             summaries = summaries[:state.rows_to_show]
@@ -1043,7 +1074,7 @@ def list_view_component(directories, results_dir):
                 with me.box(
                     style=me.Style(
                         position="relative",
-                        width="200px",
+                        width="300px",
                     )
                 ):
                     # The Box acting as Dropdown Trigger
@@ -1206,6 +1237,33 @@ def list_view_component(directories, results_dir):
                                         ),
                                     )
                 
+                def make_select_handler(job_id, item_product, item_dataset):
+                    def handler(e: me.ClickEvent):
+                        st = me.state(State)
+                        try:
+                            sel = json.loads(st.selected_evals)
+                        except Exception:
+                            sel = []
+                        
+                        if job_id in sel:
+                            sel.remove(job_id)
+                            if not sel:
+                                st.base_product = ""
+                                st.base_dataset = ""
+                        else:
+                            if len(sel) == 0:
+                                sel.append(job_id)
+                                st.base_product = item_product
+                                st.base_dataset = item_dataset
+                            elif len(sel) == 1:
+                                sel.append(job_id)
+                        
+                        st.selected_evals = json.dumps(sel)
+                    
+                    safe_id = str(job_id).replace(" ", "_").replace(".", "_").replace("-", "_")
+                    handler.__name__ = f"click_select_{safe_id}"
+                    return handler
+
                 def on_reset_click(e: me.ClickEvent):
                     st = me.state(State)
                     st.eval_id_filter = ""
@@ -1213,6 +1271,12 @@ def list_view_component(directories, results_dir):
                     st.requester_filter = ""
                     st.dataset_filter = ""
                     st.open_dropdown = ""
+                    st.selected_evals = "[]"
+                    st.base_product = ""
+                    st.base_dataset = ""
+                    st.select_mode_active = False
+                    st.compare_tab_visible = False
+                    st.ai_comparison = ""
                 
                 me.button(
                     "Reset",
@@ -1224,6 +1288,24 @@ def list_view_component(directories, results_dir):
                         padding=me.Padding.symmetric(vertical="8px", horizontal="16px"),
                         border_radius="4px",
                         cursor="pointer",
+                    )
+                )
+                
+                def on_toggle_select_mode(e: me.ClickEvent):
+                    st = me.state(State)
+                    st.select_mode_active = not st.select_mode_active
+                
+                me.button(
+                    "Compare",
+                    on_click=on_toggle_select_mode,
+                    style=me.Style(
+                        background="#0284c7" if state.select_mode_active else "#e2e8f0",
+                        color="#ffffff" if state.select_mode_active else "#475569",
+                        font_weight="600",
+                        padding=me.Padding.symmetric(vertical="8px", horizontal="16px"),
+                        border_radius="4px",
+                        cursor="pointer",
+                        margin=me.Margin(left="8px"),
                     )
                 )
     
@@ -1271,7 +1353,11 @@ def list_view_component(directories, results_dir):
             def click_ai_score(e):
                 on_sort_click("ai_score")
 
+            def click_select(e):
+                pass
+
             sort_handlers = {
+                "select": click_select,
                 "id": click_id,
                 "date": click_date,
                 "product": click_product,
@@ -1339,6 +1425,72 @@ def list_view_component(directories, results_dir):
                             else:
                                 me.text(w)
     
+            # Selection Toolbar
+            if selected_evals_list:
+                with me.box(
+                    style=me.Style(
+                        display="flex",
+                        flex_direction="row",
+                        justify_content="space-between",
+                        align_items="center",
+                        padding=me.Padding.all("8px"),
+                        background="#e0f2fe",
+                        border_radius="4px",
+                        margin=me.Margin(top="16px"),
+                    )
+                ):
+                    me.text(f"Selected: {len(selected_evals_list)} / 2", style=me.Style(color="#0369a1", font_weight="600"))
+                    
+                    def on_clear_selection(e: me.ClickEvent):
+                        st = me.state(State)
+                        st.selected_evals = "[]"
+                        st.base_product = ""
+                        st.base_dataset = ""
+                    
+                    def on_compare_click(e: me.ClickEvent):
+                        st = me.state(State)
+                        st.compare_tab_visible = True
+                        st.compare_evals = st.selected_evals
+                        st.selected_main_tab = "Compare"
+                        
+                        if not st.ai_comparison:
+                            st.ai_comparison = "Comparing..."
+                            logging.info("Set ai_comparison to Comparing... in on_compare_click")
+                            yield
+                            
+                            try:
+                                comp_evals = json.loads(st.compare_evals)
+                            except Exception:
+                                comp_evals = []
+                                
+                            logging.info(f"comp_evals in on_compare_click: {comp_evals}")
+                            if len(comp_evals) == 2:
+                                logging.info("Starting compare_evals in on_compare_click...")
+                                st.ai_comparison = compare_evals(comp_evals[0], comp_evals[1])
+                                logging.info("Finished compare_evals in on_compare_click.")
+                                yield
+                    
+                    with me.box(style=me.Style(display="flex", gap="8px")):
+                        me.button(
+                            "Clear",
+                            on_click=on_clear_selection,
+                            style=me.Style(
+                                background="#ef4444",
+                                color="#ffffff",
+                                font_weight="600",
+                            )
+                        )
+                        if len(selected_evals_list) == 2 and me.state(State).selected_main_tab != "Compare":
+                            me.button(
+                                "Compare",
+                                on_click=on_compare_click,
+                                style=me.Style(
+                                    background="#10b981",
+                                    color="#ffffff",
+                                    font_weight="600",
+                                ),
+                            )
+
             with me.box(
                 style=me.Style(
                     max_height="600px",
@@ -1369,7 +1521,10 @@ def list_view_component(directories, results_dir):
                         letter_spacing="0.05em",
                     )
                 ):
-                    headers = [
+                    headers = []
+                    if state.select_mode_active:
+                        headers.append(("Select", "select", "8ch"))
+                    headers.extend([
                         ("Eval ID", "id", "36ch"),
                         ("Date", "date", "20ch"),
                         ("Product", "product", "12ch"),
@@ -1382,7 +1537,7 @@ def list_view_component(directories, results_dir):
                         ("Executable", "executable", "10ch"),
                         ("Token Consumption", "token_consumption", "12ch"),
                         ("End-to-End Latency", "end_to_end_latency", "12ch"),
-                    ]
+                    ])
                     for label, col, width in headers:
                         render_header_cell(label, col, width)
     
@@ -1415,6 +1570,38 @@ def list_view_component(directories, results_dir):
                             background=bg_color,
                         )
                     ):
+                        # Select checkbox
+                        if state.select_mode_active:
+                            with me.box(
+                                style=me.Style(
+                                    display="table-cell",
+                                    padding=me.Padding.symmetric(
+                                        vertical="10px", horizontal="16px"
+                                    ),
+                                    text_align="center",
+                                    border=me.Border.all(
+                                        me.BorderSide(
+                                            width="1px",
+                                            color="#e2e8f0",
+                                            style="solid",
+                                        )
+                                    ),
+                                    width="8ch",
+                                )
+                            ):
+                                is_selected = d in selected_evals_list
+                                label = "✅" if is_selected else "⬜"
+                                me.button(
+                                    label,
+                                    on_click=make_select_handler(d, prod, dataset_val),
+                                    style=me.Style(
+                                        background="transparent",
+                                        color="#0284c7" if is_selected else "#64748b",
+                                        font_weight="bold",
+                                        border=me.Border.all(me.BorderSide(width="0px")),
+                                        cursor="pointer",
+                                    ),
+                                )
                         # Eval ID as a link/button
                         with me.box(
                             style=me.Style(
@@ -1727,11 +1914,48 @@ def app():
         render_app_content()
 
 
+def on_status_tab_click(e: me.ClickEvent):
+    st = me.state(State)
+    st.selected_main_tab = "Status"
+    logging.info("Tab clicked: Status")
+
+def on_list_tab_click(e: me.ClickEvent):
+    st = me.state(State)
+    st.selected_main_tab = "List"
+    logging.info("Tab clicked: List")
+
+def on_charts_tab_click(e: me.ClickEvent):
+    st = me.state(State)
+    st.selected_main_tab = "Charts"
+    logging.info("Tab clicked: Charts")
+
+def on_compare_tab_click(e: me.ClickEvent):
+    st = me.state(State)
+    st.selected_main_tab = "Compare"
+    logging.info("Tab clicked: Compare")
+    if not st.ai_comparison:
+        st.ai_comparison = "Comparing..."
+        logging.info("Set ai_comparison to Comparing...")
+        yield
+        
+        try:
+            comp_evals = json.loads(st.compare_evals)
+        except Exception:
+            comp_evals = []
+            
+        logging.info(f"comp_evals: {comp_evals}")
+        if len(comp_evals) == 2:
+            logging.info("Starting compare_evals...")
+            st.ai_comparison = compare_evals(comp_evals[0], comp_evals[1])
+            logging.info("Finished compare_evals.")
+            yield
+
+
 def render_app_content():
     try:
         state = me.state(State)
         results_dir = get_results_dir()
-        logging.info(f"render_app_content: selected_directory='{state.selected_directory}'")
+        logging.info(f"render_app_content: selected_directory='{state.selected_directory}', selected_evals='{state.selected_evals}', selected_main_tab='{state.selected_main_tab}'")
     
         directories = []
         if os.path.exists(results_dir):
@@ -2060,17 +2284,25 @@ def render_app_content():
                             from trends import trends_component
                             state = me.state(State)
                 
-                            def make_tab_click_handler(tab_val):
-                                def handler(e: me.ClickEvent):
-                                    st = me.state(State)
-                                    st.selected_main_tab = tab_val
-                                handler.__name__ = f"click_main_tab_{tab_val}"
-                                return handler
-                
-                            with me.box(style=me.Style(display="flex", gap="8px", margin=me.Margin(bottom="12px"))):
-                                for tab in ["Status", "List", "Charts"]:
+                            with me.box(style=me.Style(margin=me.Margin(bottom="12px"))):
+                                tabs = ["Status", "List", "Charts"]
+                                if state.compare_tab_visible:
+                                    tabs.append("Compare")
+                                for tab in tabs:
                                     is_active = state.selected_main_tab == tab
-                                    with me.box(
+                                    tab_text = tab
+                                    if tab == "Compare" and state.ai_comparison == "Comparing...":
+                                        tab_text += " (Loading...)"
+                                        
+                                    click_handler = None
+                                    if tab == "Status": click_handler = on_status_tab_click
+                                    elif tab == "List": click_handler = on_list_tab_click
+                                    elif tab == "Charts": click_handler = on_charts_tab_click
+                                    elif tab == "Compare": click_handler = on_compare_tab_click
+                                    
+                                    me.button(
+                                        tab_text,
+                                        on_click=click_handler,
                                         style=me.Style(
                                             padding=me.Padding.symmetric(vertical="6px", horizontal="12px"),
                                             background="#1e293b" if is_active else "#f1f5f9",
@@ -2079,10 +2311,9 @@ def render_app_content():
                                             cursor="pointer",
                                             font_weight="600" if is_active else "500",
                                             font_size="14px",
+                                            margin=me.Margin(right="8px")
                                         ),
-                                        on_click=make_tab_click_handler(tab),
-                                    ):
-                                        me.text(tab)
+                                    )
                 
                             if state.selected_main_tab == "List":
                                 try:
@@ -2094,6 +2325,31 @@ def render_app_content():
                                 trends_component()
                             elif state.selected_main_tab == "Status":
                                 status_component()
+                            elif state.selected_main_tab == "Compare":
+                                try:
+                                    comp_evals = json.loads(state.compare_evals)
+                                except Exception:
+                                    comp_evals = []
+                                
+                                with me.box(style=me.Style(padding=me.Padding.all("16px"))):
+                                    me.text("Comparison", type="headline-5")
+                                    if len(comp_evals) == 2:
+                                        with me.box(style=me.Style(margin=me.Margin(bottom="16px"))):
+                                            me.markdown(f'Comparing: <a href="/?job_id={comp_evals[0]}" target="_blank">{comp_evals[0]}</a> vs <a href="/?job_id={comp_evals[1]}" target="_blank">{comp_evals[1]}</a>')
+                                        
+                                        if not state.ai_comparison or state.ai_comparison == "Comparing...":
+                                            me.text("Comparing...", style=me.Style(font_weight="bold", color="#0284c7", margin=me.Margin(bottom="16px")))
+                                        else:
+                                            with me.box(style=me.Style(
+                                                background="#ffffff",
+                                                padding=me.Padding.all("16px"),
+                                                border_radius="8px",
+                                                border=me.Border.all(me.BorderSide(width="1px", color="#e2e8f0")),
+                                                margin=me.Margin(top="16px")
+                                            )):
+                                                me.markdown(state.ai_comparison)
+                                    else:
+                                        me.text("Invalid comparison state.")
 
                 
     except Exception as e:

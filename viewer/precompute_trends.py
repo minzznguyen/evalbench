@@ -116,7 +116,7 @@ def process_directory(d, results_dir):
 
             # Parse score from summary
             import re
-            match = re.search(r"General Score:.*?(\d+(\.\d+)?)", ai_summary)
+            match = re.search(r"General Score.*?(\d+(\.\d+)?)", ai_summary, re.IGNORECASE)
             if match:
                 ai_score = float(match.group(1))
         except Exception as e:
