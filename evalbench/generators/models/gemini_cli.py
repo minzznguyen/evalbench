@@ -71,9 +71,59 @@ class GeminiCliGenerator(QueryGenerator):
         self.gemini_cli_version = querygenerator_config.get(
             "gemini_cli_version", "gemini-cli"
         )
+        self._supports_skip_settings_cache = None
         self.setup_config = querygenerator_config.get("setup", {})
         if self.setup_config:
             self._setup()
+
+    # --skip-settings was added to `gemini extensions install` in v0.36.0
+    # (PR #17212, released 2026-04-01). Older versions reject the flag.
+    _SKIP_SETTINGS_MIN_VERSION = (0, 36, 0)
+
+    @staticmethod
+    def _parse_semver(version_str: str) -> tuple[int, int, int] | None:
+        match = re.search(r"(\d+)\.(\d+)\.(\d+)", version_str or "")
+        if not match:
+            return None
+        return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+
+    def _supports_skip_settings(self, install_env: dict) -> bool:
+        if self._supports_skip_settings_cache is not None:
+            return self._supports_skip_settings_cache
+
+        # Try parsing version directly from gemini_cli_version spec first
+        # (e.g. "@google/gemini-cli@0.36.0" or "gemini-cli@0.37.1").
+        parsed = self._parse_semver(self.gemini_cli_version)
+
+        if parsed is None:
+            try:
+                result = subprocess.run(
+                    [
+                        "npm",
+                        "exec",
+                        "--yes",
+                        self.gemini_cli_version,
+                        "--",
+                        "--version",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    env=install_env,
+                    timeout=60,
+                )
+                parsed = self._parse_semver(result.stdout)
+            except Exception as e:
+                logging.warning(f"Could not detect gemini-cli version: {e}")
+                parsed = None
+
+        supported = parsed is not None and parsed >= self._SKIP_SETTINGS_MIN_VERSION
+        self._supports_skip_settings_cache = supported
+        logging.info(
+            f"gemini-cli version {parsed}: --skip-settings "
+            f"{'supported' if supported else 'not supported'}"
+        )
+        return supported
 
     def _setup(self):
         """Performs initial setup for Gemini CLI."""
@@ -568,20 +618,24 @@ class GeminiCliGenerator(QueryGenerator):
             if extensions[ext] and "settings" in extensions[ext]:
                 current_ext_env.update(extensions[ext]["settings"])
 
+            install_cmd = [
+                "npm",
+                "exec",
+                "--yes",
+                self.gemini_cli_version,
+                "--",
+                "extensions",
+                "install",
+                ext,
+                "--consent",
+            ]
+            if self._supports_skip_settings(install_env):
+                install_cmd.append("--skip-settings")
+
             try:
                 # gemini extensions install <name_or_url> --consent
                 result = subprocess.run(
-                    [
-                        "npm",
-                        "exec",
-                        "--yes",
-                        self.gemini_cli_version,
-                        "--",
-                        "extensions",
-                        "install",
-                        ext,
-                        "--consent",
-                    ],
+                    install_cmd,
                     check=False,
                     capture_output=True,
                     text=True,
@@ -603,14 +657,92 @@ class GeminiCliGenerator(QueryGenerator):
                     if os.path.exists(self.extensions_dir):
                         for item in os.listdir(self.extensions_dir):
                             if search_name in item:
-                                self._patch_manifest_sensitive(
-                                    os.path.join(self.extensions_dir, item)
-                                )
+                                ext_dir = os.path.join(self.extensions_dir, item)
+                                self._patch_manifest_sensitive(ext_dir)
+                                # For gemini-cli >= 0.36.0, --skip-settings was used
+                                # so we must persist settings explicitly afterwards.
+                                if "--skip-settings" in install_cmd:
+                                    settings_values = (
+                                        extensions[ext].get("settings", {})
+                                        if extensions[ext]
+                                        else {}
+                                    )
+                                    self._configure_extension_settings(
+                                        item, ext_dir, settings_values, install_env
+                                    )
 
             except subprocess.TimeoutExpired:
                 logging.error(f"Installation of extension {ext} timed out.")
             except Exception as e:
                 logging.error(f"Failed to install extension {ext}: {e}")
+
+    def _configure_extension_settings(
+        self,
+        ext_name: str,
+        ext_path: str,
+        settings_values: dict,
+        install_env: dict,
+    ):
+        """Persists extension settings via `gemini extensions config`.
+
+        Required for gemini-cli >= 0.36.0 where install uses --skip-settings
+        and settings are not picked up from env vars alone at runtime.
+        """
+        manifest_path = os.path.join(ext_path, "gemini-extension.json")
+        if not os.path.exists(manifest_path):
+            return
+
+        try:
+            with open(manifest_path, "r") as f:
+                manifest = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logging.warning(f"Could not parse manifest {manifest_path}: {e}")
+            return
+
+        settings_schema = manifest.get("settings", [])
+        if not settings_schema:
+            return
+
+        for setting in settings_schema:
+            env_var = setting.get("envVar")
+            if not env_var:
+                continue
+            value = settings_values.get(env_var)
+            if value is None:
+                # Optional setting with no override provided; skip it.
+                continue
+
+            try:
+                result = subprocess.run(
+                    [
+                        "npm",
+                        "exec",
+                        "--yes",
+                        self.gemini_cli_version,
+                        "--",
+                        "extensions",
+                        "config",
+                        ext_name,
+                        env_var,
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    input=str(value) + "\n",
+                    env=install_env,
+                    timeout=60,
+                )
+                if result.returncode != 0:
+                    logging.warning(
+                        f"Failed to configure {ext_name}.{env_var}: "
+                        f"{result.stderr or result.stdout}"
+                    )
+                else:
+                    logging.info(f"Configured extension setting {ext_name}.{env_var}")
+            except subprocess.TimeoutExpired:
+                logging.warning(f"Timeout configuring {ext_name}.{env_var}")
+            except Exception as e:
+                logging.warning(f"Error configuring {ext_name}.{env_var}: {e}")
 
     def _patch_manifest_sensitive(self, ext_path):
         """Patches extension manifest to disable keychain requirements."""
