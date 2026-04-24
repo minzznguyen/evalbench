@@ -603,6 +603,8 @@ These require a `model_config` pointing to an LLM for evaluation:
 | `goal_completion` | 0–100 | Uses an LLM to evaluate whether the agent accomplished the conversation plan's intent. Returns `100` for PASS, `0` for FAIL. |
 | `behavioral_metrics` | 0–100 | Evaluates hallucination rate and clarification rate in a single LLM pass. Starts at 100 and penalizes: **-50 per hallucination**, **-20 per unnecessary clarification**. |
 | `parameter_analysis` | 100 (qualitative) | Uses an LLM to provide qualitative feedback on tool parameters used. Always scores 100; the value is in the textual explanation. |
+| `binary_rubric_scorer` | 0–100 | Uses an LLM to evaluate performance based on concrete user-supplied rubric criteria. |
+
 
 ### Deterministic Scorers
 
@@ -636,6 +638,48 @@ scorers:
     model_config: datasets/model_configs/gemini_2.5_pro_model.yaml
   parameter_analysis:
     model_config: datasets/model_configs/gemini_2.5_pro_model.yaml
+  binary_rubric_scorer:
+    model_config: datasets/model_configs/gemini_2.5_pro_model.yaml
+
+### Example Rubric Scenario (`quick_dbt_test.json`)
+
+```json
+{
+  "scenarios": [
+    {
+      "id": "quick_dbt_test",
+      "starting_prompt": "Set up a bare minimum dbt project with a single model that selects 1. Create a `dbt_project.yml` and `profiles.yml` in the project directory so that `dbt compile` and `dbt run` will pass. In `profiles.yml`, configure a profile named `default` using `type: bigquery` and `method: oauth`. You can assume the environment has default credentials configured.",
+      "conversation_plan": "The agent should set up a dbt project and run compile and run successfully.",
+      "expected_trajectory": [],
+      "binary_rubric": [
+        "The agent created a profiles.yml with type: bigquery.",
+        "The agent created a dbt_project.yml."
+      ],
+      "kind": "tool",
+      "max_turns": 5,
+      "enforce_order": false
+    }
+  ]
+}
+```
+
+### Example Configuration (`quick_dbt_test_config.yaml`)
+
+```yaml
+description: "Quick tests for Rubric Scorer."
+dataset_config: quick_dbt_test.json
+model_config: gemini_cli_test_model.yaml
+simulated_user_model_config: gemini_2.5_pro_test_model.yaml
+
+scorers:
+  goal_completion:
+    model_config: gemini_2.5_pro_test_model.yaml
+  binary_rubric_scorer:
+    model_config: gemini_2.5_pro_test_model.yaml
+  turn_count: {}
+  executable: {}
+```
+
 ```
 
 ---

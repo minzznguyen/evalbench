@@ -16,6 +16,7 @@ from scorers import turncount
 from scorers import endtoendlatency
 from scorers import toolcalllatency
 from scorers import tokenconsumption
+from scorers import binaryrubricscorer
 from dataset.evaloutput import EvalOutput
 import logging
 
@@ -94,6 +95,37 @@ def compare(
         comparators.append(
             tokenconsumption.TokenConsumption(scorers["token_consumption"])
         )
+    if "binary_rubric_scorer" in scorers:
+        import json
+
+        context_str = eval_output_item.get("eval_results", "")
+        try:
+            if isinstance(context_str, dict):
+                context = context_str
+            else:
+                context = json.loads(context_str) if context_str else {}
+            rubric = context.get("scenario", {}).get("binary_rubric", [])
+            if rubric:
+                for index, criterion in enumerate(rubric):
+                    comparators.append(
+                        binaryrubricscorer.BinaryRubricScorer(
+                            scorers["binary_rubric_scorer"], global_models,
+                            criterion=criterion, index=index
+                        )
+                    )
+            else:
+                comparators.append(
+                    binaryrubricscorer.BinaryRubricScorer(
+                        scorers["binary_rubric_scorer"], global_models
+                    )
+                )
+        except Exception:
+
+            comparators.append(
+                binaryrubricscorer.BinaryRubricScorer(
+                    scorers["binary_rubric_scorer"], global_models
+                )
+            )
 
     for comp in comparators:
         score = 0
