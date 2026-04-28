@@ -617,6 +617,7 @@ These require no additional model:
 | `end_to_end_latency` | Milliseconds | Total latency = model API latency + tool execution latency. |
 | `tool_call_latency` | Milliseconds | Sum of all tool execution durations across all turns. |
 | `token_consumption` | Count | Total tokens consumed (input + output) across all turns. |
+| `python_scorer` | 0–100 | Delegates evaluation to an external Python script executed via `uv run`. |
 
 ### Scorer Configuration Example
 
@@ -640,6 +641,53 @@ scorers:
     model_config: datasets/model_configs/gemini_2.5_pro_model.yaml
   binary_rubric_scorer:
     model_config: datasets/model_configs/gemini_2.5_pro_model.yaml
+
+### Custom Scorers
+
+#### PythonScorer
+
+The `python_scorer` allows you to run arbitrary Python scripts to evaluate agent performance without checking the scorer into the EvalBench repository.
+
+**Configuration:**
+
+```yaml
+scorers:
+  python_scorer:
+    script_path: "path/to/your_script.py"
+```
+
+**How it works:**
+
+1.  EvalBench calls `uv run <script_path>` as a subprocess.
+2.  It passes the complete evaluation context as a JSON object via **standard input** (stdin).
+3.  The script must process this JSON and output its result as a JSON object to **standard output** (stdout) containing `score` (float) and `reason` (string).
+
+**Dependency Management:**
+
+User scripts can use **PEP 723** inline metadata to declare dependencies. `uv run` will automatically create an isolated environment and install them before running the script.
+
+Example script with dependencies:
+
+```python
+# /// script
+# dependencies = ["requests"]
+# ///
+
+import sys
+import json
+import requests
+
+def main():
+    input_data = json.load(sys.stdin)
+    # ... custom logic ...
+    result = {"score": 100.0, "reason": "PASS"}
+    print(json.dumps(result))
+
+if __name__ == "__main__":
+    main()
+```
+
+A sample validator is available at `evalbench/scorers/examples/sample_python_validator.py`.
 
 ### Example Rubric Scenario (`quick_dbt_test.json`)
 

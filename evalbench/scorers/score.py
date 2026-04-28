@@ -17,8 +17,10 @@ from scorers import endtoendlatency
 from scorers import toolcalllatency
 from scorers import tokenconsumption
 from scorers import binaryrubricscorer
+from scorers import pythonscorer
 from dataset.evaloutput import EvalOutput
 import logging
+import os
 
 
 def compare(
@@ -126,6 +128,18 @@ def compare(
                     scorers["binary_rubric_scorer"], global_models
                 )
             )
+    for key, scorer_config in scorers.items():
+        if key == "python_scorer":
+            custom_name = scorer_config.get("scorer_name")
+            if custom_name and isinstance(custom_name, str):
+                custom_name = custom_name.strip()
+            if not custom_name:
+                script_path = scorer_config.get("script_path")
+                if script_path and isinstance(script_path, str) and script_path.strip():
+                    custom_name = os.path.splitext(os.path.basename(script_path))[0].strip()
+                if not custom_name:
+                    custom_name = key
+            comparators.append(pythonscorer.PythonScorer(scorer_config, name=custom_name))
 
     for comp in comparators:
         score = 0
