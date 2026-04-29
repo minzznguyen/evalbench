@@ -1,0 +1,37 @@
+# OpenAI Codex CLI version.
+#   - Globally installed binary:  "codex"
+#   - Pin to a specific npm version (uses `npm exec --yes` like Gemini CLI):
+#       "@openai/codex@latest"
+codex_cli_version: "codex"
+
+generator: codex_cli
+
+# Model to use. Pass any model id supported by your OpenAI account, e.g.
+# "gpt-5.5", "o4-mini", "gpt-4.1", etc.
+model: "gpt-5.5"
+
+# Sandbox / approval policy for `codex exec`.
+#   sandbox_mode:  "danger-full-access" | "workspace-write" | "read-only"
+#   approval_mode: "never" | "on-failure" | "untrusted"  (only used when
+#                  sandbox_mode != "danger-full-access")
+# Default `danger-full-access` mirrors Gemini's --yolo / Claude Code's
+# --dangerously-skip-permissions and is required for unattended evals.
+sandbox_mode: "danger-full-access"
+approval_mode: "never"
+
+# Codex emits NDJSON via `--json`; older versions only accept
+# `--experimental-json`. Override here if needed.
+json_flag: "--json"
+
+env:
+  OPENAI_API_KEY: <API_KEY>
+  GOOGLE_CLOUD_PROJECT: "astana-evaluation"
+  GOOGLE_CLOUD_LOCATION: "us-central1"
+
+setup:
+  mcp_servers:
+    "cloud-sql":
+      httpUrl: "https://sqladmin.googleapis.com/mcp"
+      authProviderType: google_credentials
+      headers:
+        X-Goog-User-Project: astana-evaluation
