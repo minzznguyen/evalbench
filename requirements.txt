@@ -35,3 +35,7 @@ google-adk
 mcp
 pytest
 mock
+google-cloud-storage
+dbt-core
+dbt-bigquery
+dbt-postgres
