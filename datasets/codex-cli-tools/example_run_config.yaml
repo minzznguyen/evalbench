@@ -4,9 +4,6 @@
 dataset_config: datasets/codex-cli-tools/codex-cli.evalset.json
 dataset_format: agent-format
 
-# Orchestrator Configuration
-# `agent` is the canonical alias for the multi-turn CLI evaluator and works
-# for Gemini CLI, Claude Code, and Codex CLI alike.
 orchestrator: agent
 model_config: datasets/model_configs/codex_cli_model.yaml
 simulated_user_model_config: datasets/model_configs/gemini_2.5_pro_model.yaml
