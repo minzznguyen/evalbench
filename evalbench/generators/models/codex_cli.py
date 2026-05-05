@@ -10,37 +10,32 @@ import time
 
 
 _SECRET_MANAGER_PATH_RE = re.compile(
-    r"^projects/[^/]+/secrets/[^/]+/versions/(?:\d+|latest)$"
+    r"^projects/[^/]+/secrets/[^/]+/versions/\d+$"
 )
 _SECRET_MANAGER_URL_PREFIX = "secret_manager://"
+
+
+def _strip_sm_prefix(value: str) -> str:
+    if value.startswith(_SECRET_MANAGER_URL_PREFIX):
+        return value[len(_SECRET_MANAGER_URL_PREFIX):]
+    return value
 
 
 def _looks_like_secret_manager_path(value: str) -> bool:
     if not isinstance(value, str):
         return False
-    if value.startswith(_SECRET_MANAGER_URL_PREFIX):
-        value = value[len(_SECRET_MANAGER_URL_PREFIX):]
-    return bool(_SECRET_MANAGER_PATH_RE.match(value))
+    return bool(_SECRET_MANAGER_PATH_RE.match(_strip_sm_prefix(value)))
 
 
 def _fetch_secret_manager(path: str) -> str:
-    """Fetches the payload of a Secret Manager resource path.
+    """Fetches a Secret Manager payload via the repo's shared helper.
 
-    Accepts either the bare `projects/.../secrets/.../versions/...` form or
-    the `secret_manager://projects/.../secrets/.../versions/...` URL form.
+    Accepts either the bare `projects/.../secrets/.../versions/<N>` form or
+    the `secret_manager://projects/.../secrets/.../versions/<N>` URL form.
+    The underlying helper requires a numeric version (no `latest`).
     """
-    if path.startswith(_SECRET_MANAGER_URL_PREFIX):
-        path = path[len(_SECRET_MANAGER_URL_PREFIX):]
-    if not _SECRET_MANAGER_PATH_RE.match(path):
-        raise ValueError(
-            f"Not a valid Secret Manager resource path: {path!r}"
-        )
-    # Lazy-import so the module can load in environments without GCP libs.
-    from google.cloud import secretmanager_v1  # type: ignore
-    client = secretmanager_v1.SecretManagerServiceClient()
-    request = secretmanager_v1.AccessSecretVersionRequest(name=path)
-    response = client.access_secret_version(request=request)
-    return response.payload.data.decode("utf-8")
+    from databases.util import get_db_secret
+    return get_db_secret(_strip_sm_prefix(path))
 
 
 class CLICommand:
