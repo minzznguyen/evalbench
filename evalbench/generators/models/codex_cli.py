@@ -388,12 +388,14 @@ class CodexCliGenerator(QueryGenerator):
             ), {}
 
         stderr_chunks: list[str] = []
+
         def _drain_stderr():
             try:
                 for line in proc.stderr:
                     stderr_chunks.append(line)
             except Exception as e:
                 logging.debug(f"stderr drain failed: {e}")
+
         stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
         stderr_thread.start()
 

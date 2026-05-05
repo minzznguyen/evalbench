@@ -10,7 +10,6 @@ from generators.models import get_generator
 from generators.models.gemini_cli import GeminiCliGenerator
 from generators.models.claude_code import ClaudeCodeGenerator
 from generators.models.codex_cli import CodexCliGenerator
-from util.config import load_yaml_config
 from mp import mprunner
 from work.agentgenwork import AgentGenWork
 from evaluator.simulateduser import SimulatedUser
