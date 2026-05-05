@@ -42,14 +42,12 @@ class AgentEvaluator:
             self.agent_version = self.generator.claude_code_version
         elif isinstance(self.generator, GeminiCliGenerator):
             self.agent_version = self.generator.gemini_cli_version
-        elif generator_type == "codex_cli":
-            self.agent_version = model_config.get(
-                "codex_cli_version", config.get("codex_cli_version", "codex"))
-            self.generator = CodexCliGenerator(model_config)
+        elif isinstance(self.generator, CodexCliGenerator):
+            self.agent_version = self.generator.codex_cli_version
         else:
             raise ValueError(
-                f"AgentEvaluator only supports gemini_cli and claude_code generators, "
-                f"got {type(self.generator).__name__}")
+                f"AgentEvaluator only supports gemini_cli, claude_code, and "
+                f"codex_cli generators, got {type(self.generator).__name__}")
 
         runner_config = self.config.get("runners", {})
         self.agent_runners = runner_config.get("agent_runners", 10)
