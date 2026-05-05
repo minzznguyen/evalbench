@@ -222,8 +222,12 @@ class CodexCliGenerator(QueryGenerator):
             json.dump(payload, f)
         try:
             os.chmod(auth_path, 0o600)
-        except OSError:
-            pass
+        except OSError as e:
+            logging.warning(
+                f"Failed to set permissions on {auth_path} to 0o600: {e}"
+            )
+                f"Failed to set permissions on {auth_path} to 0o600: {e}"
+            )
 
     def _setup(self):
         """Performs initial setup for Codex CLI (writes ~/.codex/config.toml)."""
