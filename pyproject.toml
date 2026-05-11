@@ -54,6 +54,9 @@ dependencies = [
     "gunicorn",
 ]
 
+[project.scripts]
+google-evalbench = "evalbench.evalbench:run"
+
 [tool.setuptools.packages.find]
 include = ["evalbench*"]
 
