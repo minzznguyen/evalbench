@@ -50,6 +50,8 @@ dependencies = [
     "dbt-core",
     "dbt-bigquery",
     "dbt-postgres",
+    "mesop",
+    "gunicorn",
 ]
 
 [tool.setuptools.packages.find]
