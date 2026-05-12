@@ -214,6 +214,11 @@ def run():
         main_module = sys.modules['__main__']
         if main_module.__doc__ and 'exec' in main_module.__doc__:
             main_module.__doc__ = sys.modules[__name__].__doc__
+            # Register key flags for __main__ and sys.argv[0] so they show up in launcher's short help
+            flags.FLAGS.register_key_flag_for_module('__main__', flags.FLAGS['experiment_config'])
+            flags.FLAGS.register_key_flag_for_module('__main__', flags.FLAGS['suite_config'])
+            flags.FLAGS.register_key_flag_for_module(sys.argv[0], flags.FLAGS['experiment_config'])
+            flags.FLAGS.register_key_flag_for_module(sys.argv[0], flags.FLAGS['suite_config'])
     app.run(main)
 
 
