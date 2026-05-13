@@ -4,6 +4,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 ENV PYTHONPATH=/evalbench/evalbench/evalproto:.
 ENV HOME=/root
+ENV VIRTUAL_ENV=/evalbench/.venv
+ENV PATH=/evalbench/.venv/bin:$PATH
 ENV CLOUDSDK_CONFIG=/root/.config/gcloud
 ENV GCLOUD_CONFIG=/root/.config/gcloud
 
