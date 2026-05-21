@@ -9,6 +9,7 @@ Focus on identifying any issues with parameter construction and suggesting impro
 ### Best Practices for Tool Design
 When providing your suggestions, consider the following best practices for tool building:
 - **Tool Names**: Use `snake_case` (`<action>_<resource>`) and avoid product-specific prefixes.
+  Note: tool names you see here may carry a `<server>__` prefix (e.g. `cloud-sql__list_instances`) added by the evaluation framework to disambiguate identically-named tools across MCP servers. Ignore this prefix when evaluating tool design — critique only the portion after `__`.
 - **Focus**: Tools should be focused on a specific task. Aim for tools comprehensive enough to complete a task in one go, but avoid bundling unrelated actions.
 - **Idempotency**: Whenever possible, tools should be idempotent (e.g., returning success if a resource to be created already exists).
 - **Actionable Error Messages**: Errors should be clear and actionable, explaining what went wrong, why, and how to fix it instead of generic errors.

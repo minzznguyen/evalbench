@@ -1,4 +1,5 @@
 from .generator import QueryGenerator
+from .tool_naming import canonicalize_gemini_tool_name
 import subprocess
 import os
 import json
@@ -965,7 +966,16 @@ class GeminiCliGenerator(QueryGenerator):
                     }
 
                     for tid, tu in tool_uses.items():
-                        tname = tu.get("tool_name", "unknown")
+                        # Gemini CLI reports MCP tools as
+                        # ``mcp_<server>_<tool>`` (single-underscore
+                        # separators); native tools use their bare names.
+                        # Normalize MCP tools to the canonical
+                        # ``<server>__<tool>`` form so the trajectory
+                        # matcher can compare across harnesses without
+                        # per-generator logic.
+                        tname = canonicalize_gemini_tool_name(
+                            tu.get("tool_name", "unknown")
+                        )
                         if tname not in tools_stats["byName"]:
                             tools_stats["byName"][tname] = {
                                 "count": 0,

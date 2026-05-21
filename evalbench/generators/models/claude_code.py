@@ -1,4 +1,5 @@
 from .generator import QueryGenerator
+from .tool_naming import canonicalize_claude_tool_name
 import subprocess
 import os
 import json
@@ -8,6 +9,12 @@ import sys
 import re
 import shutil
 from util.context import rpc_id_var
+
+
+# Infrastructure tools that the Claude Code harness invokes for its own
+# bookkeeping (e.g. enumerating available MCP tools) and that should not
+# count toward the user-visible trajectory.
+_CLAUDE_INFRA_TOOLS = frozenset({"ToolSearch"})
 
 
 class CLICommand:
@@ -507,8 +514,14 @@ class ClaudeCodeGenerator(QueryGenerator):
                             final_obj["response"] += block.get("text", "")
                         elif block_type == "tool_use":
                             tool_id = block.get("id", "")
+                            # Claude Code emits MCP tools as
+                            # ``mcp__<server>__<tool>``. Normalize to the
+                            # canonical ``<server>__<tool>`` form so the
+                            # trajectory matcher can compare across
+                            # harnesses without per-generator logic.
+                            raw_name = block.get("name", "unknown")
                             tool_uses[tool_id] = {
-                                "tool_name": block.get("name", "unknown"),
+                                "tool_name": canonicalize_claude_tool_name(raw_name),
                                 "parameters": block.get("input", {}),
                             }
 
@@ -692,14 +705,24 @@ class ClaudeCodeGenerator(QueryGenerator):
             return {}
 
     def extract_tools(self, stdout: str) -> list[str]:
-        """Extracts the list of tools used from the CLI output."""
+        """Extracts the list of tools used from the CLI output.
+
+        Filters out infrastructure tools (see ``_CLAUDE_INFRA_TOOLS``) so
+        that trajectory comparisons reflect user-visible behavior only.
+        Tool names are already in canonical ``<server>__<tool>`` form for
+        MCP tools (set when the ``tool_use`` block was recorded).
+        """
         output_json = self.parse_response(stdout)
         if (
             "stats" in output_json
             and "tools" in output_json["stats"]
             and "byName" in output_json["stats"]["tools"]
         ):
-            return list(output_json["stats"]["tools"]["byName"].keys())
+            return [
+                name
+                for name in output_json["stats"]["tools"]["byName"].keys()
+                if name not in _CLAUDE_INFRA_TOOLS
+            ]
         return []
 
     def _get_installed_skills(self) -> set[str]:

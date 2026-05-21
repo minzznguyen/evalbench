@@ -1,4 +1,5 @@
 from .generator import QueryGenerator
+from .tool_naming import canonical_tool_name
 import subprocess
 import os
 import json
@@ -846,10 +847,15 @@ class CodexCliGenerator(QueryGenerator):
                         final_obj["response"] += text
 
             elif kind == "mcp_tool_call":
-                # Record on first sight; refresh on completion.
+                # Codex's mcp_tool_call payload exposes the MCP server name
+                # and tool name as separate fields. Combine them into the
+                # canonical ``<server>__<tool>`` form so downstream scorers
+                # can compare across harnesses without per-generator logic.
+                server = payload.get("server", "")
+                tool = payload.get("tool", "unknown")
                 tool_uses[item_id] = {
-                    "tool_name": payload.get("tool", "unknown"),
-                    "server": payload.get("server", ""),
+                    "tool_name": canonical_tool_name(server, tool),
+                    "server": server,
                     "parameters": self._coerce_json(payload.get("arguments", {})),
                 }
                 if event_type == self._EV_ITEM_COMPLETED:

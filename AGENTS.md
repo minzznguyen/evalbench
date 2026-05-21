@@ -207,7 +207,7 @@ Contains the test cases.
       "id": "list-instances-01",
       "starting_prompt": "List all Cloud SQL instances in project my-evaluation-project",
       "conversation_plan": "Ensure the agent accurately calls list_instances. Verify the output is returned correctly.",
-      "expected_trajectory": ["list_instances"],
+      "expected_trajectory": ["cloud-sql__list_instances"],
       "env": { "GOOGLE_CLOUD_PROJECT": "my-evaluation-project" },
       "max_turns": 4
     }

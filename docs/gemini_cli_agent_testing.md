@@ -249,10 +249,14 @@ The evalset JSON file defines the test scenarios. Each scenario represents an ag
 | `id` | Yes | Unique identifier for the scenario |
 | `starting_prompt` | Yes | The first user message sent to Gemini CLI |
 | `conversation_plan` | Yes | Natural language instructions that guide the simulated user's behavior across turns. This defines the goals, expected information to provide, and how to react to agent responses. |
-| `expected_trajectory` | Yes | Ordered list of tool names the agent is expected to call. Used by `trajectory_matcher` scorer. |
+| `expected_trajectory` | Yes | Ordered list of tool names the agent is expected to call. Used by `trajectory_matcher` scorer. See [Tool name format](#tool-name-format) below. |
 | `env` | Optional | Per-scenario environment variables (merged with model config env) |
 | `kind` | Optional | Category label (e.g., `"tools"`) |
 | `max_turns` | Yes | Maximum number of conversation turns before the evaluation stops |
+
+#### Tool name format
+
+Entries in `expected_trajectory` use the canonical form `<server>__<tool>` (double-underscore separator) for MCP tools, and the bare name for native harness tools (e.g. `Read`, `Bash`). Each harness adapter normalizes its raw tool-call event into this form at the boundary, so the same evalset can score runs from Codex, Claude Code, and Gemini CLI without modification. The `<server>` segment comes from the MCP server key in your model config and is case-sensitive — e.g. `cloud-sql` or `bigtable`. See `evalbench/generators/models/tool_naming.py` for the canonicalization helper.
 
 #### Writing Good Conversation Plans
 
@@ -270,7 +274,7 @@ The `conversation_plan` is a critical part of each scenario. It instructs the si
   "id": "csql-create-ambiguous-multiturn-01",
   "starting_prompt": "I need a database.",
   "conversation_plan": "The user starts with a vague request. You want to CREATE a NEW Cloud SQL instance named 'my-pg-app'. If the agent offers to create one, say YES. When asked for details, provide 'my-pg-app' as the instance name and 'user_data' as the database name. Never claim to have an existing instance. The goal is for the agent to eventually create the database 'user_data' inside 'my-pg-app' in astana-evaluation project.",
-  "expected_trajectory": ["list_instances", "create_instance", "create_database"],
+  "expected_trajectory": ["cloud-sql__list_instances", "cloud-sql__create_instance", "cloud-sql__create_database"],
   "env": {
     "GOOGLE_CLOUD_PROJECT": "astana-evaluation"
   },
@@ -790,7 +794,7 @@ reporting:
          "id": "list-and-inspect-01",
          "starting_prompt": "list all instances in project my-project",
          "conversation_plan": "Ask the agent to list instances. Once listed, get details of the 'prod-db' instance and verify it is RUNNABLE.",
-         "expected_trajectory": ["list_instances", "get_instance"],
+         "expected_trajectory": ["cloud-sql__list_instances", "cloud-sql__get_instance"],
          "env": { "GOOGLE_CLOUD_PROJECT": "my-project" },
          "kind": "tools",
          "max_turns": 3
@@ -866,7 +870,7 @@ reporting:
          "id": "fake-create-success",
          "starting_prompt": "Create a new Cloud SQL instance named 'test-db' in project 'my-project'.",
          "conversation_plan": "All details are in the prompt. The agent should call create_instance and report success.",
-         "expected_trajectory": ["create_instance"],
+         "expected_trajectory": ["cloud-sql__create_instance"],
          "env": { "GOOGLE_CLOUD_PROJECT": "my-project" },
          "kind": "tools",
          "max_turns": 3

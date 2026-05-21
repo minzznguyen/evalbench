@@ -248,7 +248,7 @@ setup:
 
 ### 3. Evaluation Dataset (Evalset)
 
-**Identical schema** to the Gemini CLI / Claude Code evalset. See [Gemini CLI doc — Evalset](./gemini_cli_agent_testing.md#3-evaluation-dataset-evalset) for full details.
+**Identical schema** to the Gemini CLI / Claude Code evalset. See [Gemini CLI doc — Evalset](./gemini_cli_agent_testing.md#3-evaluation-dataset-evalset) for full details, including the canonical [tool name format](./gemini_cli_agent_testing.md#tool-name-format) used in `expected_trajectory`.
 
 Minimal example ([codex-cli.evalset.json](../datasets/codex-cli-tools/codex-cli.evalset.json)):
 
@@ -259,7 +259,7 @@ Minimal example ([codex-cli.evalset.json](../datasets/codex-cli-tools/codex-cli.
       "id": "cloud-sql-list-instances-01",
       "starting_prompt": "list all Cloud SQL instances in project astana-evaluation",
       "conversation_plan": "Ask the agent to list instances in project astana-evaluation. Once all instances are listed if nl2code exists get its state and validate it is RUNNABLE.",
-      "expected_trajectory": ["list_instances", "get_instance"],
+      "expected_trajectory": ["cloud-sql__list_instances", "cloud-sql__get_instance"],
       "env": { "GOOGLE_CLOUD_PROJECT": "astana-evaluation" },
       "kind": "tools",
       "max_turns": 3
