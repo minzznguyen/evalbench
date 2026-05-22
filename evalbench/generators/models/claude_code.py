@@ -11,8 +11,6 @@ import shutil
 from util.context import rpc_id_var
 
 
-
-
 class CLICommand:
     def __init__(self, cli, prompt, env=None, resume=False, session_id=None, allowedTools=None):
         self.cli = cli
