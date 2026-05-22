@@ -126,3 +126,17 @@ def canonicalize_gemini_tool_name(name: str) -> str:
         return name
     server, tool = parsed
     return canonical_tool_name(server, tool)
+
+
+def is_canonical_mcp_name(name: str) -> bool:
+    """Return True iff ``name`` is in canonical MCP form (``<server>__<tool>``).
+
+    Native/built-in harness tools (Read, Bash, update_topic,
+    run_shell_command, etc.) never contain the canonical separator, so
+    this predicate cleanly distinguishes MCP calls from harness-internal
+    ones after canonicalization.
+    """
+    if not name:
+        return False
+    server, sep, tool = name.partition(CANONICAL_SEPARATOR)
+    return bool(sep and server and tool)

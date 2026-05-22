@@ -1,5 +1,5 @@
 from .generator import QueryGenerator
-from .tool_naming import canonicalize_claude_tool_name
+from .tool_naming import canonicalize_claude_tool_name, is_canonical_mcp_name
 import subprocess
 import os
 import json
@@ -11,10 +11,6 @@ import shutil
 from util.context import rpc_id_var
 
 
-# Infrastructure tools that the Claude Code harness invokes for its own
-# bookkeeping (e.g. enumerating available MCP tools) and that should not
-# count toward the user-visible trajectory.
-_CLAUDE_INFRA_TOOLS = frozenset({"ToolSearch"})
 
 
 class CLICommand:
@@ -705,12 +701,14 @@ class ClaudeCodeGenerator(QueryGenerator):
             return {}
 
     def extract_tools(self, stdout: str) -> list[str]:
-        """Extracts the list of tools used from the CLI output.
+        """Extracts the list of MCP tools used from the CLI output.
 
-        Filters out infrastructure tools (see ``_CLAUDE_INFRA_TOOLS``) so
-        that trajectory comparisons reflect user-visible behavior only.
-        Tool names are already in canonical ``<server>__<tool>`` form for
-        MCP tools (set when the ``tool_use`` block was recorded).
+        Native Claude Code tools (``Read``, ``Bash``, ``Edit``, ...) and
+        harness infrastructure tools (``ToolSearch``) are filtered out so
+        trajectory comparisons reflect user-visible MCP behavior only.
+        Names that pass through are already in canonical
+        ``<server>__<tool>`` form (set when the ``tool_use`` block was
+        recorded).
         """
         output_json = self.parse_response(stdout)
         if (
@@ -721,7 +719,7 @@ class ClaudeCodeGenerator(QueryGenerator):
             return [
                 name
                 for name in output_json["stats"]["tools"]["byName"].keys()
-                if name not in _CLAUDE_INFRA_TOOLS
+                if is_canonical_mcp_name(name)
             ]
         return []
 

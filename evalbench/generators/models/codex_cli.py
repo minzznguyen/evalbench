@@ -1,5 +1,5 @@
 from .generator import QueryGenerator
-from .tool_naming import canonical_tool_name
+from .tool_naming import canonical_tool_name, is_canonical_mcp_name
 import subprocess
 import os
 import json
@@ -1017,13 +1017,24 @@ class CodexCliGenerator(QueryGenerator):
             return {}
 
     def extract_tools(self, stdout: str) -> list[str]:
+        """Extracts the list of MCP tools used from the CLI output.
+
+        Native Codex tools (shell, file ops, etc.) are filtered out so
+        trajectory comparisons reflect user-visible MCP behavior only.
+        Names that pass through are already in canonical
+        ``<server>__<tool>`` form.
+        """
         output_json = self.parse_response(stdout)
         if (
             "stats" in output_json
             and "tools" in output_json["stats"]
             and "byName" in output_json["stats"]["tools"]
         ):
-            return list(output_json["stats"]["tools"]["byName"].keys())
+            return [
+                name
+                for name in output_json["stats"]["tools"]["byName"].keys()
+                if is_canonical_mcp_name(name)
+            ]
         return []
 
     def _get_installed_skills(self) -> set[str]:

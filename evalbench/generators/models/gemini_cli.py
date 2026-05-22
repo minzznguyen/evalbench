@@ -1,5 +1,5 @@
 from .generator import QueryGenerator
-from .tool_naming import canonicalize_gemini_tool_name
+from .tool_naming import canonicalize_gemini_tool_name, is_canonical_mcp_name
 import subprocess
 import os
 import json
@@ -1035,14 +1035,24 @@ class GeminiCliGenerator(QueryGenerator):
             return {}
 
     def extract_tools(self, stdout: str) -> list[str]:
-        """Extracts the list of tools used from the CLI output."""
+        """Extracts the list of MCP tools used from the CLI output.
+
+        Native Gemini tools (``update_topic``, ``run_shell_command``,
+        ``write_file``, ...) are filtered out so trajectory comparisons
+        focus on user-visible MCP behavior. Names that pass through are
+        already in canonical ``<server>__<tool>`` form.
+        """
         output_json = self.parse_response(stdout)
         if (
             "stats" in output_json
             and "tools" in output_json["stats"]
             and "byName" in output_json["stats"]["tools"]
         ):
-            return list(output_json["stats"]["tools"]["byName"].keys())
+            return [
+                name
+                for name in output_json["stats"]["tools"]["byName"].keys()
+                if is_canonical_mcp_name(name)
+            ]
         return []
 
     def extract_skills(self, stdout: str) -> list[str]:
