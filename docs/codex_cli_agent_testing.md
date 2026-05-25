@@ -454,7 +454,7 @@ Quick reference:
 
 | Scorer | Type | Description |
 |---|---|---|
-| `trajectory_matcher` | Deterministic | Jaccard or Levenshtein match between expected and actual tool trajectory |
+| `trajectory_matcher` | Deterministic | Jaccard or Levenshtein match between expected and actual tool trajectory. Native Codex tools (`shell`, file ops, ...) are dropped from both sides by default — set `filter_native_tools: false` to score them too. |
 | `goal_completion` | LLM | Did the agent accomplish the conversation plan? |
 | `behavioral_metrics` | LLM | Hallucination rate + clarification rate |
 | `parameter_analysis` | LLM | Qualitative feedback on tool parameters |

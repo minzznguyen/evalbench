@@ -66,14 +66,59 @@ class TrajectoryMatcherTest(unittest.TestCase):
         score, _ = _compare(matcher, expected, actual)
         self.assertEqual(score, 0.0)
 
-    def test_native_tools_pass_through(self):
-        matcher = TrajectoryMatcher({})
+    def test_native_tools_pass_through_when_filter_disabled(self):
+        # With filtering off, native tool names are compared verbatim.
+        matcher = TrajectoryMatcher({"filter_native_tools": False})
 
         expected = ["Read", "Bash"]
         actual = ["Read", "Bash"]
 
         score, _ = _compare(matcher, expected, actual)
         self.assertEqual(score, 100.0)
+
+    def test_filter_native_tools_drops_native_on_actual_by_default(self):
+        # Default-on filter: native tools in actual must not drag Jaccard down
+        # when expected contains only MCP intent.
+        matcher = TrajectoryMatcher({})
+
+        expected = ["cloud-sql__list_instances"]
+        actual = ["cloud-sql__list_instances", "Read", "Bash", "update_topic"]
+
+        score, explanation = _compare(matcher, expected, actual)
+        self.assertEqual(score, 100.0)
+        self.assertIn("filter_native_tools=True", explanation)
+
+    def test_filter_disabled_keeps_native_tools(self):
+        # With filtering off, the same native leakage drags Jaccard down.
+        matcher = TrajectoryMatcher({"filter_native_tools": False})
+
+        expected = ["cloud-sql__list_instances"]
+        actual = ["cloud-sql__list_instances", "Read", "Bash", "update_topic"]
+
+        score, _ = _compare(matcher, expected, actual)
+        self.assertLess(score, 100.0)
+
+    def test_filter_applies_to_expected_too(self):
+        # Symmetric filtering: native tools in expected are also dropped so
+        # an evalset author can't accidentally pin behavior on a native tool
+        # while filtering is on.
+        matcher = TrajectoryMatcher({})
+
+        expected = ["cloud-sql__list_instances", "Bash"]
+        actual = ["cloud-sql__list_instances"]
+
+        score, _ = _compare(matcher, expected, actual)
+        self.assertEqual(score, 100.0)
+
+    def test_filter_removes_all_tools_scores_empty(self):
+        # If filtering wipes both sides clean, the matcher should report the
+        # standard "both empty" success rather than divide-by-zero.
+        matcher = TrajectoryMatcher({})
+
+        score, explanation = _compare(matcher, ["Read"], ["Bash"])
+        self.assertEqual(score, 100.0)
+        self.assertIn("empty", explanation)
+        self.assertIn("filter_native_tools=True", explanation)
 
     def test_both_empty_is_full_score(self):
         matcher = TrajectoryMatcher({})

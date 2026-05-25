@@ -20,7 +20,13 @@ runners:
 ### Scorer Related Configs
 ############################################################
 scorers:
+  # By default trajectory_matcher drops native/harness-internal tools
+  # (Read, Bash, Edit, ToolSearch, ...) from both expected and actual
+  # trajectories before scoring. Uncomment the block below to keep them
+  # and score native-tool usage too.
   trajectory_matcher: {}
+  # trajectory_matcher:
+  #   filter_native_tools: false
   goal_completion:
     model_config: datasets/model_configs/gemini_2.5_pro_model.yaml
   behavioral_metrics:
