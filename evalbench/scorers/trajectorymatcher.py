@@ -20,7 +20,7 @@ agent reaches for a native tool.
 
 from typing import Tuple, Any, List
 from scorers import comparator
-from generators.models.tool_naming import is_canonical_mcp_name
+from generators.models.tool_naming import looks_like_canonical_mcp_name
 
 
 class TrajectoryMatcher(comparator.Comparator):
@@ -102,8 +102,8 @@ class TrajectoryMatcher(comparator.Comparator):
 
         filter_note = ""
         if self.filter_native_tools:
-            filtered_expected = [t for t in expected if is_canonical_mcp_name(t)]
-            filtered_actual = [t for t in actual if is_canonical_mcp_name(t)]
+            filtered_expected = [t for t in expected if looks_like_canonical_mcp_name(t)]
+            filtered_actual = [t for t in actual if looks_like_canonical_mcp_name(t)]
             dropped_expected = len(expected) - len(filtered_expected)
             dropped_actual = len(actual) - len(filtered_actual)
             if dropped_expected or dropped_actual:
