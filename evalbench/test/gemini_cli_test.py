@@ -138,7 +138,7 @@ def test_setup_skill_dict_link(
 
     assert mock_run.call_count == 3
     calls = [call[0][0] for call in mock_run.call_args_list]
-    
+
     expected_cmd = [
         "npm",
         "exec",
@@ -185,7 +185,7 @@ def test_setup_skill_dict_install_by_path(
 
     assert mock_run.call_count == 3
     calls = [call[0][0] for call in mock_run.call_args_list]
-    
+
     expected_cmd = [
         "npm",
         "exec",
@@ -232,7 +232,7 @@ def test_setup_skill_dict_install_by_name(
 
     assert mock_run.call_count == 3
     calls = [call[0][0] for call in mock_run.call_args_list]
-    
+
     expected_cmd = [
         "npm",
         "exec",
@@ -279,7 +279,7 @@ def test_setup_skill_dict_enable(
 
     assert mock_run.call_count == 3
     calls = [call[0][0] for call in mock_run.call_args_list]
-    
+
     expected_cmd = [
         "npm",
         "exec",
@@ -325,7 +325,7 @@ def test_setup_skill_dict_disable(
 
     assert mock_run.call_count == 3
     calls = [call[0][0] for call in mock_run.call_args_list]
-    
+
     expected_cmd = [
         "npm",
         "exec",
