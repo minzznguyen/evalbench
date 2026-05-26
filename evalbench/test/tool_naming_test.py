@@ -11,6 +11,7 @@ from generators.models.tool_naming import (
     canonical_tool_name,
     canonicalize_claude_tool_name,
     canonicalize_gemini_tool_name,
+    looks_like_canonical_mcp_name,
     parse_claude_mcp_tool_name,
     parse_gemini_mcp_tool_name,
 )
@@ -121,6 +122,23 @@ class CanonicalizeAdapterFormsTest(unittest.TestCase):
             canonicalize_gemini_tool_name("mcp_lonely"),
             "mcp_lonely",
         )
+
+
+class LooksLikeCanonicalMcpNameTest(unittest.TestCase):
+
+    def test_mcp_form_is_detected(self):
+        self.assertTrue(looks_like_canonical_mcp_name("cloud-sql__list_instances"))
+        self.assertTrue(looks_like_canonical_mcp_name("alloydb__create_user"))
+
+    def test_native_tools_rejected(self):
+        self.assertFalse(looks_like_canonical_mcp_name("Read"))
+        self.assertFalse(looks_like_canonical_mcp_name("update_topic"))
+        self.assertFalse(looks_like_canonical_mcp_name("run_shell_command"))
+
+    def test_empty_segments_rejected(self):
+        self.assertFalse(looks_like_canonical_mcp_name(""))
+        self.assertFalse(looks_like_canonical_mcp_name("__tool"))
+        self.assertFalse(looks_like_canonical_mcp_name("server__"))
 
 
 if __name__ == "__main__":

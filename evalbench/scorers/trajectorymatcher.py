@@ -8,10 +8,19 @@ tools as ``<server>__<tool>`` and native tools as their bare names. Each
 harness adapter performs that normalization at the boundary (see
 ``generators/models/tool_naming.py``), so this scorer can stay
 generator-agnostic and do a plain string comparison.
+
+By default the matcher drops native/harness-internal tools (``Read``,
+``Bash``, ``update_topic``, ``run_shell_command``, ``ToolSearch``, ...)
+from both expected and actual trajectories before scoring, so dataset
+authors can focus ``expected_trajectory`` on user-visible MCP intent.
+Set ``filter_native_tools: false`` in the scorer config to compare raw
+trajectories instead -- useful when an evalset cares about how often the
+agent reaches for a native tool.
 """
 
 from typing import Tuple, Any, List
 from scorers import comparator
+from generators.models.tool_naming import looks_like_canonical_mcp_name
 
 
 class TrajectoryMatcher(comparator.Comparator):
@@ -26,6 +35,7 @@ class TrajectoryMatcher(comparator.Comparator):
         self.name = "trajectory_matcher"
         self.config = config
         self.enforce_order = config.get("enforce_order", False)
+        self.filter_native_tools = config.get("filter_native_tools", True)
 
     def _levenshtein_distance(self, seq1: List[str], seq2: List[str]) -> int:
         n, m = len(seq1), len(seq2)
@@ -90,8 +100,23 @@ class TrajectoryMatcher(comparator.Comparator):
         if not isinstance(expected, list) or not isinstance(actual, list):
             return 0.0, "Trajectory data must be lists."
 
+        filter_note = ""
+        if self.filter_native_tools:
+            filtered_expected = [t for t in expected if looks_like_canonical_mcp_name(t)]
+            filtered_actual = [t for t in actual if looks_like_canonical_mcp_name(t)]
+            dropped_expected = len(expected) - len(filtered_expected)
+            dropped_actual = len(actual) - len(filtered_actual)
+            if dropped_expected or dropped_actual:
+                filter_note = (
+                    f" (filter_native_tools=True dropped "
+                    f"{dropped_expected} expected, {dropped_actual} actual)"
+                )
+            expected, actual = filtered_expected, filtered_actual
+
         if not expected and not actual:
-            return 100.0, "Both expected and actual trajectories are empty."
+            return 100.0, (
+                "Both expected and actual trajectories are empty." + filter_note
+            )
 
         score = 0.0
         explanation = ""
@@ -105,12 +130,20 @@ class TrajectoryMatcher(comparator.Comparator):
             normalized_score = max(
                 0.0, 1.0 - (distance / max_len)) if max_len > 0 else 1.0
             score = normalized_score * 100.0
-            explanation = f"Sequence Alignment Score: {score:.2f} (Distance: {distance}, Max Length: {max_len}). Expected: {expected}, Actual: {actual}"
+            explanation = (
+                f"Sequence Alignment Score: {score:.2f} (Distance: {distance}, "
+                f"Max Length: {max_len}). Expected: {expected}, Actual: {actual}"
+                + filter_note
+            )
 
         else:
             # Flexible ordering (Jaccard Similarity)
             similarity = self._jaccard_similarity(set(expected), set(actual))
             score = similarity * 100.0
-            explanation = f"Jaccard Similarity Score: {score:.2f} (Intersection over Union). Expected Set: {set(expected)}, Actual Set: {set(actual)}"
+            explanation = (
+                f"Jaccard Similarity Score: {score:.2f} (Intersection over Union). "
+                f"Expected Set: {set(expected)}, Actual Set: {set(actual)}"
+                + filter_note
+            )
 
         return score, explanation

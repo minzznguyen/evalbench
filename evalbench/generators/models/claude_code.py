@@ -11,12 +11,6 @@ import shutil
 from util.context import rpc_id_var
 
 
-# Infrastructure tools that the Claude Code harness invokes for its own
-# bookkeeping (e.g. enumerating available MCP tools) and that should not
-# count toward the user-visible trajectory.
-_CLAUDE_INFRA_TOOLS = frozenset({"ToolSearch"})
-
-
 class CLICommand:
     def __init__(self, cli, prompt, env=None, resume=False, session_id=None, allowedTools=None, cwd=None):
         self.cli = cli
@@ -709,10 +703,11 @@ class ClaudeCodeGenerator(QueryGenerator):
     def extract_tools(self, stdout: str) -> list[str]:
         """Extracts the list of tools used from the CLI output.
 
-        Filters out infrastructure tools (see ``_CLAUDE_INFRA_TOOLS``) so
-        that trajectory comparisons reflect user-visible behavior only.
-        Tool names are already in canonical ``<server>__<tool>`` form for
-        MCP tools (set when the ``tool_use`` block was recorded).
+        Returns every tool the harness recorded -- MCP calls in canonical
+        ``<server>__<tool>`` form alongside native tools (``Read``,
+        ``Bash``, ``Edit``, ``ToolSearch``, ...). The trajectory scorer
+        is responsible for filtering native/harness-internal tools when
+        ``filter_native_tools`` is enabled.
         """
         output_json = self.parse_response(stdout)
         if (
@@ -720,11 +715,7 @@ class ClaudeCodeGenerator(QueryGenerator):
             and "tools" in output_json["stats"]
             and "byName" in output_json["stats"]["tools"]
         ):
-            return [
-                name
-                for name in output_json["stats"]["tools"]["byName"].keys()
-                if name not in _CLAUDE_INFRA_TOOLS
-            ]
+            return list(output_json["stats"]["tools"]["byName"].keys())
         return []
 
     def _get_installed_skills(self) -> set[str]:

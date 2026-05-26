@@ -1035,7 +1035,14 @@ class GeminiCliGenerator(QueryGenerator):
             return {}
 
     def extract_tools(self, stdout: str) -> list[str]:
-        """Extracts the list of tools used from the CLI output."""
+        """Extracts the list of tools used from the CLI output.
+
+        Returns every tool the harness recorded -- MCP calls in canonical
+        ``<server>__<tool>`` form alongside native Gemini tools
+        (``update_topic``, ``run_shell_command``, ``write_file``, ...).
+        The trajectory scorer is responsible for filtering native tools
+        when ``filter_native_tools`` is enabled.
+        """
         output_json = self.parse_response(stdout)
         if (
             "stats" in output_json

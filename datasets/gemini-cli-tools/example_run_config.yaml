@@ -13,7 +13,13 @@ simulated_user_model_config: datasets/model_configs/gemini_2.5_pro_model.yaml
 ### Scorer Related Configs
 ############################################################
 scorers:
+  # By default trajectory_matcher drops native/harness-internal tools
+  # (run_shell_command, write_file, update_topic, ...) from both expected
+  # and actual trajectories before scoring. Uncomment the block below to
+  # keep them and score native-tool usage too.
   trajectory_matcher: {}
+  # trajectory_matcher:
+  #   filter_native_tools: false
   goal_completion:
     model_config: datasets/model_configs/gemini_2.5_pro_model.yaml
   behavioral_metrics:
