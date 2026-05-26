@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-                                         
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from generators.models.gemini_cli import GeminiCliGenerator
@@ -21,7 +20,6 @@ def test_setup_single_skill_string(
     mock_run,
     monkeypatch,
 ):
-    """A string entry in setup.skills triggers a copytree from real to fake home."""
     real_home = "/fake/real_home"
     real_skill_path = os.path.join(real_home, ".gemini", "skills", "my-single-skill")
 
@@ -45,12 +43,6 @@ def test_setup_single_skill_string(
 
 
 def test_skill_content_preserved(tmp_path, monkeypatch):
-    """Unit test: a skill file's contents survive copy into the fake-home sandbox.
-
-    Directly tests the file copying step in _setup_skills without running
-    the full generator initialization or NPM/extension setup pipelines.
-    """
-    # 1. Setup paths in temp directory
     real_home = tmp_path / "real_home"
     real_home.mkdir()
 
@@ -62,19 +54,13 @@ def test_skill_content_preserved(tmp_path, monkeypatch):
     expected_content = "hello world"
     skill_file.write_text(expected_content)
 
-    # 2. Configure HOME and CWD env var to use temp directory
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("HOME", str(real_home))
 
-    # 3. Initialize generator with EMPTY config (bypasses _setup)
-    # This sets up paths like self.skills_dir but does NOT run _setup_npm_auth
-    # or list extensions, meaning we don't even need to mock subprocess.run!
     generator = GeminiCliGenerator({})
 
-    # 4. Directly call the target method under test
     generator._setup_skills([skill_name])
 
-    # 5. Verify if the file was copied and content preserved
     expected_fake_skill_file = (
         tmp_path / ".venv" / "fake_home" / ".gemini" / "skills" / skill_name / "secret.txt"
     )
@@ -95,12 +81,10 @@ def test_setup_multiple_skills_string(
     mock_run,
     monkeypatch,
 ):
-    """Multiple string entries in setup.skills trigger copies for each."""
     real_home = "/fake/real_home"
     skill_a_path = os.path.join(real_home, ".gemini", "skills", "skill-A")
     skill_b_path = os.path.join(real_home, ".gemini", "skills", "skill-B")
 
-                                    
     mock_exists.side_effect = lambda path: path in (skill_a_path, skill_b_path)
     mock_run.return_value = MagicMock(returncode=0, stdout="fake-token")
 
@@ -117,7 +101,6 @@ def test_setup_multiple_skills_string(
     expected_fake_a = os.path.join(expected_fake_home, ".gemini", "skills", "skill-A")
     expected_fake_b = os.path.join(expected_fake_home, ".gemini", "skills", "skill-B")
 
-                                   
     assert mock_copytree.call_count == 2
     mock_copytree.assert_any_call(skill_a_path, expected_fake_a)
     mock_copytree.assert_any_call(skill_b_path, expected_fake_b)
@@ -130,7 +113,6 @@ def test_setup_skill_dict_link(
     mock_run,
     monkeypatch,
 ):
-    """A dict entry with action 'link' triggers npm exec gemini-cli skills link."""
     real_home = "/fake/real_home"
     mock_exists.return_value = False
     mock_run.return_value = MagicMock(returncode=0, stdout="success")
@@ -178,7 +160,6 @@ def test_setup_skill_dict_install_by_path(
     mock_run,
     monkeypatch,
 ):
-    """A dict entry with action 'install' and path triggers npm exec gemini-cli skills install <path>."""
     real_home = "/fake/real_home"
     mock_exists.return_value = False
     mock_run.return_value = MagicMock(returncode=0, stdout="success")
@@ -226,7 +207,6 @@ def test_setup_skill_dict_install_by_name(
     mock_run,
     monkeypatch,
 ):
-    """A dict entry with action 'install' and name triggers npm exec gemini-cli skills install <name>."""
     real_home = "/fake/real_home"
     mock_exists.return_value = False
     mock_run.return_value = MagicMock(returncode=0, stdout="success")
@@ -274,7 +254,6 @@ def test_setup_skill_dict_enable(
     mock_run,
     monkeypatch,
 ):
-    """A dict entry with action 'enable' triggers npm exec gemini-cli skills enable <name>."""
     real_home = "/fake/real_home"
     mock_exists.return_value = False
     mock_run.return_value = MagicMock(returncode=0, stdout="success")
@@ -321,7 +300,6 @@ def test_setup_skill_dict_disable(
     mock_run,
     monkeypatch,
 ):
-    """A dict entry with action 'disable' triggers npm exec gemini-cli skills disable <name>."""
     real_home = "/fake/real_home"
     mock_exists.return_value = False
     mock_run.return_value = MagicMock(returncode=0, stdout="success")
