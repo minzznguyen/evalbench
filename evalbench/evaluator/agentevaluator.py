@@ -132,7 +132,16 @@ class AgentEvaluator:
             logging.info(
                 f"Turn {turn + 1}/{max_turns} - Prompt: {current_prompt}")
             if isinstance(self.generator, (GeminiCliGenerator, ClaudeCodeGenerator, CodexCliGenerator)):
-                if isinstance(self.generator, (ClaudeCodeGenerator, CodexCliGenerator)):
+                if isinstance(self.generator, ClaudeCodeGenerator):
+                    cli_cmd = self.generator.create_command(
+                        cli=self.agent_version,
+                        prompt=current_prompt,
+                        env=env,
+                        resume=(turn > 0),
+                        session_id=session_id,
+                        cwd=resolved_work_dir,
+                    )
+                elif isinstance(self.generator, CodexCliGenerator):
                     cli_cmd = self.generator.create_command(
                         cli=self.agent_version,
                         prompt=current_prompt,

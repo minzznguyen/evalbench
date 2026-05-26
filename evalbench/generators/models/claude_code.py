@@ -18,13 +18,14 @@ _CLAUDE_INFRA_TOOLS = frozenset({"ToolSearch"})
 
 
 class CLICommand:
-    def __init__(self, cli, prompt, env=None, resume=False, session_id=None, allowedTools=None):
+    def __init__(self, cli, prompt, env=None, resume=False, session_id=None, allowedTools=None, cwd=None):
         self.cli = cli
         self.prompt = prompt
         self.env = env if env else {}
         self.resume = resume
         self.session_id = session_id
         self.allowedTools = allowedTools
+        self.cwd = cwd
 
 
 class ClaudeCodeGenerator(QueryGenerator):
@@ -403,12 +404,13 @@ class ClaudeCodeGenerator(QueryGenerator):
         return self._run_claude_code(cli_cmd)
 
     def _execute_cli_command(
-        self, command: list[str], env: dict[str, str] | None = None
+        self, command: list[str], env: dict[str, str] | None = None,
+        cwd: str | None = None,
     ) -> subprocess.CompletedProcess:
         try:
             result = subprocess.run(
                 command, capture_output=True, text=True, check=False, env=env,
-                cwd=self.fake_home, stdin=subprocess.DEVNULL
+                cwd=cwd if cwd else self.fake_home, stdin=subprocess.DEVNULL
             )
             return result
         except FileNotFoundError:
@@ -472,7 +474,7 @@ class ClaudeCodeGenerator(QueryGenerator):
 
         logging.info(f"Running Claude Code CLI: {' '.join(command)}")
 
-        result = self._execute_cli_command(command, env=env)
+        result = self._execute_cli_command(command, env=env, cwd=cli_cmd.cwd)
         if result.stdout:
             result.stdout = self._parse_stream_json(result.stdout)
 
@@ -813,12 +815,12 @@ class ClaudeCodeGenerator(QueryGenerator):
 
     def create_command(
         self, cli: str, prompt: str, env: dict = None, resume: bool = False,
-        session_id: str = None
+        session_id: str = None, cwd: str = None,
     ) -> CLICommand:
         merged_env = self.env.copy()
         if env:
             merged_env.update(env)
         return CLICommand(
             cli=cli, prompt=prompt, env=merged_env,
-            resume=resume, session_id=session_id
+            resume=resume, session_id=session_id, cwd=cwd,
         )
