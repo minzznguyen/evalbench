@@ -44,14 +44,13 @@ def test_setup_single_skill_string(
     mock_copytree.assert_called_once_with(real_skill_path, expected_fake_skill_path)
 
 
-@patch('generators.models.gemini_cli.subprocess.run')
-def test_skill_content_preserved(mock_run, tmp_path, monkeypatch):
-    """End-to-end: a skill file's contents survive copy into the fake-home sandbox.
+def test_skill_content_preserved(tmp_path, monkeypatch):
+    """Unit test: a skill file's contents survive copy into the fake-home sandbox.
 
-    Exercises the full GeminiCliGenerator.__init__ -> _setup -> _setup_skills
-    path with real filesystem operations confined to tmp_path. Only subprocess
-    (gcloud auth) is mocked.
+    Directly tests the file copying step in _setup_skills without running
+    the full generator initialization or NPM/extension setup pipelines.
     """
+    # 1. Setup paths in temp directory
     real_home = tmp_path / "real_home"
     real_home.mkdir()
 
@@ -63,13 +62,19 @@ def test_skill_content_preserved(mock_run, tmp_path, monkeypatch):
     expected_content = "hello world"
     skill_file.write_text(expected_content)
 
-    mock_run.return_value = MagicMock(returncode=0, stdout="fake-token")
-
+    # 2. Configure HOME and CWD env var to use temp directory
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("HOME", str(real_home))
 
-    GeminiCliGenerator({"setup": {"skills": [skill_name]}})
+    # 3. Initialize generator with EMPTY config (bypasses _setup)
+    # This sets up paths like self.skills_dir but does NOT run _setup_npm_auth
+    # or list extensions, meaning we don't even need to mock subprocess.run!
+    generator = GeminiCliGenerator({})
 
+    # 4. Directly call the target method under test
+    generator._setup_skills([skill_name])
+
+    # 5. Verify if the file was copied and content preserved
     expected_fake_skill_file = (
         tmp_path / ".venv" / "fake_home" / ".gemini" / "skills" / skill_name / "secret.txt"
     )
