@@ -40,7 +40,6 @@ class GcpAdcCredentialService(CredentialService):
                 )
 
             if not self.credentials.valid:
-                # Move synchronous network call off the event loop
                 await asyncio.to_thread(self.credentials.refresh, Request())
 
             self.logger.debug("Retrieved GCP ADC token successfully.")
@@ -84,7 +83,6 @@ class DataEngineeringAgentGenerator(QueryGenerator):
 
         self.logger = logging.getLogger(__name__)
 
-        # Task 1.2: Configure AuthInterceptor with our custom CredentialService
         self.auth_interceptor = AuthInterceptor(GcpAdcCredentialService())
         self.logger.info(
             "A2A AuthInterceptor successfully configured with "
