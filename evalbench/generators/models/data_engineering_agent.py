@@ -48,7 +48,8 @@ class GcpAdcCredentialService(CredentialService):
 
         except (DefaultCredentialsError, RefreshError) as e:
             self.logger.error(
-                "Failed to retrieve or refresh GCP Application Default Credentials: %s",
+                "Failed to retrieve or refresh GCP Application Default "
+                "Credentials: %s",
                 e,
             )
             return None
@@ -65,24 +66,34 @@ class DataEngineeringAgentGenerator(QueryGenerator):
     def __init__(self, querygenerator_config: Dict[str, Any]):
         super().__init__(querygenerator_config)
         self.name = "data_engineering_agent"
-        self.endpoint = querygenerator_config.get(
-            "endpoint",
-            "https://geminidataanalytics.googleapis.com/v1/a2a/projects/bq-dataworkeragent-test/locations/us-west4/agents/dataengineeringagent"
-        )
+        self.endpoint = querygenerator_config.get("endpoint", "")
         self.target_workspace = querygenerator_config.get(
-            "target_workspace",
-            "projects/bq-dataworkeragent-test/locations/us-west4/repositories/agent_demo_dataform/workspaces/james_test_123"
+            "target_workspace", ""
         )
+
+        if not self.endpoint:
+            raise ValueError(
+                "Configuration key 'endpoint' is required for "
+                "DataEngineeringAgentGenerator."
+            )
+        if not self.target_workspace:
+            raise ValueError(
+                "Configuration key 'target_workspace' is required for "
+                "DataEngineeringAgentGenerator."
+            )
+
         self.logger = logging.getLogger(__name__)
 
         # Task 1.2: Configure AuthInterceptor with our custom CredentialService
         self.auth_interceptor = AuthInterceptor(GcpAdcCredentialService())
         self.logger.info(
-            "A2A AuthInterceptor successfully configured with GcpAdcCredentialService."
+            "A2A AuthInterceptor successfully configured with "
+            "GcpAdcCredentialService."
         )
 
     def generate_internal(self, prompt: str) -> subprocess.CompletedProcess:
         """Stubbed messaging logic for WIP scaffolding (Task 1.3)."""
         raise NotImplementedError(
-            "Task 1.3 DEA A2A messaging logic in generate_internal is not yet implemented."
+            "Task 1.3 DEA A2A messaging logic in generate_internal is "
+            "not yet implemented."
         )
