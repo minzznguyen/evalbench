@@ -50,6 +50,7 @@ dependencies = [
     "dbt-core",
     "dbt-bigquery",
     "dbt-postgres",
+    "a2a-sdk>=1.0.3",
 ]
 
 [tool.uv.sources]

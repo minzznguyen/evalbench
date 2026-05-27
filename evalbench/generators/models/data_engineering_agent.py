@@ -1,45 +1,88 @@
+import asyncio
 import logging
+import subprocess
 from typing import Any, Dict
 
-from a2a.client import create_client, ClientConfig
+from a2a.client import ClientCallContext, ClientConfig
 from a2a.client.auth import AuthInterceptor, CredentialService
-from a2a.client.client import ClientCallContext
-from a2a.types import a2a_pb2 as pb
 import google.auth
+from google.auth.exceptions import DefaultCredentialsError, RefreshError
 from google.auth.transport.requests import Request
 
 from .generator import QueryGenerator
 
 
 class GcpAdcCredentialService(CredentialService):
-    """GCP Application Default Credentials (ADC) service for A2A SDK."""
+    """GCP Application Default Credentials (ADC) service for A2A SDK.
+
+    This provider intentionally only services OAuth/OAuth2 schemes.
+    """
+
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.credentials = None
 
     async def get_credentials(
         self,
         security_scheme_name: str,
         context: ClientCallContext | None,
     ) -> str | None:
-        credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-        credentials.refresh(Request())
-        token = credentials.token
-        print(f"🔑 [A2A Credential Service] Successfully retrieved GCP ADC token: {token[:10]}...")
-        return token
+        if security_scheme_name.lower() not in ("oauth", "oauth2"):
+            raise ValueError(
+                f"GcpAdcCredentialService only services 'oauth' or 'oauth2' "
+                f"schemes, got '{security_scheme_name}'"
+            )
+
+        try:
+            if self.credentials is None:
+                self.credentials, _ = google.auth.default(
+                    scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                )
+
+            if not self.credentials.valid:
+                # Move synchronous network call off the event loop
+                await asyncio.to_thread(self.credentials.refresh, Request())
+
+            self.logger.debug("Retrieved GCP ADC token successfully.")
+            return self.credentials.token
+
+        except (DefaultCredentialsError, RefreshError) as e:
+            self.logger.error(
+                "Failed to retrieve or refresh GCP Application Default Credentials: %s",
+                e,
+            )
+            return None
+        except Exception as e:
+            self.logger.exception(
+                "Unexpected error while fetching GCP ADC credentials: %s", e
+            )
+            return None
 
 
 class DataEngineeringAgentGenerator(QueryGenerator):
-    """Data Engineering Agent (DEA) Query Generator."""
+    """Data Engineering Agent (DEA) Query Generator using the A2A SDK."""
 
     def __init__(self, querygenerator_config: Dict[str, Any]):
         super().__init__(querygenerator_config)
         self.name = "data_engineering_agent"
+        self.endpoint = querygenerator_config.get(
+            "endpoint",
+            "https://geminidataanalytics.googleapis.com/v1/a2a/projects/bq-dataworkeragent-test/locations/us-west4/agents/dataengineeringagent"
+        )
+        self.target_workspace = querygenerator_config.get(
+            "target_workspace",
+            "projects/bq-dataworkeragent-test/locations/us-west4/repositories/agent_demo_dataform/workspaces/james_test_123"
+        )
         self.logger = logging.getLogger(__name__)
-        
-        # Task 1.2: Configure authentication
+
+        # Task 1.2: Configure AuthInterceptor with our custom CredentialService
         self.auth_interceptor = AuthInterceptor(GcpAdcCredentialService())
-        print("✅ A2A AuthInterceptor successfully configured with GCP ADC Credential Service!")
+        self.logger.info(
+            "A2A AuthInterceptor successfully configured with GcpAdcCredentialService."
+        )
 
-    def generate_internal(self, prompt: str) -> str:
-        """Generates a response for the given prompt (A2A logic stub)."""
-        raise NotImplementedError("Task 1.3 A2A messaging logic is not yet implemented.")
-
-
+    def generate_internal(self, prompt: str) -> subprocess.CompletedProcess:
+        """Stubbed messaging logic for WIP scaffolding (Task 1.3)."""
+        raise NotImplementedError(
+            "Task 1.3 DEA A2A messaging logic in generate_internal is not yet implemented."
+        )

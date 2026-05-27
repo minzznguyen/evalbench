@@ -10,6 +10,7 @@ from .query_data_api import QueryDataAPIGenerator
 from .gemini_cli import GeminiCliGenerator
 from .claude_code import ClaudeCodeGenerator
 from .codex_cli import CodexCliGenerator
+from .data_engineering_agent import DataEngineeringAgentGenerator
 from util.config import load_yaml_config
 
 
@@ -42,6 +43,8 @@ def get_generator(global_models, model_config_path: str, db: DB = None):
             model = ClaudeCodeGenerator(config)
         if config["generator"] == "codex_cli":
             model = CodexCliGenerator(config)
+        if config["generator"] == "data_engineering_agent":
+            model = DataEngineeringAgentGenerator(config)
         if not model:
             raise ValueError(f"Unknown Generator {config['generator']}")
 

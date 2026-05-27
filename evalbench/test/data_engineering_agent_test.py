@@ -1,0 +1,31 @@
+import os
+import sys
+from unittest.mock import MagicMock, patch
+import pytest
+
+# Add generators path to system path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from generators.models import get_generator
+from generators.models.data_engineering_agent import DataEngineeringAgentGenerator
+
+
+def test_data_engineering_agent_generator_setup():
+    config = {
+        "generator": "data_engineering_agent",
+        "endpoint": "https://geminidataanalytics.googleapis.com/v1/a2a/projects/test/locations/us-west4/agents/dataengineeringagent",
+        "target_workspace": "projects/test/locations/us-west4/repositories/test-repo/workspaces/test-workspace",
+    }
+
+    # Mock google.auth.default during initialization
+    with patch("google.auth.default") as mock_auth_default:
+        mock_creds = MagicMock()
+        mock_creds.valid = True
+        mock_auth_default.return_value = (mock_creds, "test-project")
+
+        generator = DataEngineeringAgentGenerator(config)
+
+        assert generator.name == "data_engineering_agent"
+        assert generator.endpoint == config["endpoint"]
+        assert generator.target_workspace == config["target_workspace"]
+        assert generator.auth_interceptor is not None
