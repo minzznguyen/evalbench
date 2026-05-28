@@ -161,7 +161,12 @@ def analyze_result(
         if metric_name in llm_metrics_list:
             metric_df = df[df["comparator"] == metric_name]
             for _, row in metric_df.iterrows():
-                logging.info(f"\n--- {metric_name} Analysis ---")
+                row_id = row.get("id")
+                header = f"--- {metric_name} Analysis"
+                if pd.notna(row_id):
+                    header += f" [id={row_id}]"
+                header += " ---"
+                logging.info(f"\n{header}")
                 if pd.notna(row.get("comparison_logs")):
                     logging.info(f"{row['comparison_logs']}")
                 elif pd.notna(row.get("comparison_error")):

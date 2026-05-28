@@ -173,12 +173,24 @@ class Evaluator:
             record_successful_sql_gen(progress_reporting)
 
             try:
-                db_conn = db_queue.get(timeout=60)
+                db_conn = db_queue.get(timeout=180)
                 work = sqlexecwork.SQLExecWork(
                     db_conn, self.config, eval_output, db_queue
                 )
                 self.sqlrunner.execute_work(work)
                 exec_future_to_eval[self.sqlrunner.futures[-1]] = eval_output
+            except queue.Empty:
+                error_msg = f"Timeout Error: Waited too long (queue.Empty) for database '{eval_output.get('database', 'unknown')}'"
+                logging.error(error_msg)
+                eval_output["generated_error"] = error_msg
+
+                record_successful_sql_exec(progress_reporting)
+                work = scorework.ScorerWork(
+                    self.config, eval_output, scoring_results, global_models
+                )
+                self.scoringrunner.execute_work(work)
+                score_future_to_eval[self.scoringrunner.futures[-1]
+                                     ] = eval_output
             except Exception as e:
 
                 logging.error(
