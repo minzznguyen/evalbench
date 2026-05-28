@@ -1,9 +1,9 @@
 import asyncio
 import logging
 import subprocess
-from typing import Any, Dict
+from typing import Any
 
-from a2a.client import ClientCallContext, ClientConfig
+from a2a.client import ClientCallContext
 from a2a.client.auth import AuthInterceptor, CredentialService
 import google.auth
 from google.auth.exceptions import DefaultCredentialsError, RefreshError
@@ -62,7 +62,7 @@ class GcpAdcCredentialService(CredentialService):
 class DataEngineeringAgentGenerator(QueryGenerator):
     """Data Engineering Agent (DEA) Query Generator using the A2A SDK."""
 
-    def __init__(self, querygenerator_config: Dict[str, Any]):
+    def __init__(self, querygenerator_config: dict[str, Any]):
         super().__init__(querygenerator_config)
         self.name = "data_engineering_agent"
         self.endpoint = querygenerator_config.get("endpoint", "")

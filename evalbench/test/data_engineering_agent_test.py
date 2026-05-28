@@ -7,7 +7,10 @@ import pytest
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from generators.models import get_generator
-from generators.models.data_engineering_agent import DataEngineeringAgentGenerator
+from generators.models.data_engineering_agent import (
+    DataEngineeringAgentGenerator,
+    GcpAdcCredentialService,
+)
 
 
 def test_data_engineering_agent_generator_setup():
@@ -29,3 +32,14 @@ def test_data_engineering_agent_generator_setup():
         assert generator.endpoint == config["endpoint"]
         assert generator.target_workspace == config["target_workspace"]
         assert generator.auth_interceptor is not None
+
+
+@pytest.mark.anyio
+async def test_get_credentials_invalid_scheme():
+    service = GcpAdcCredentialService()
+
+    with pytest.raises(ValueError) as excinfo:
+        await service.get_credentials("basic", None)
+
+    assert "only services 'oauth' or 'oauth2'" in str(excinfo.value)
+

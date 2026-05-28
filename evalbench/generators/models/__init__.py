@@ -1,6 +1,6 @@
 from .alloydb_ai_nl import AlloyDBGenerator
 from databases import DB
-from generators.models.generator import QueryGenerator
+from .generator import QueryGenerator
 from .gemini import GeminiGenerator
 from .passthrough import NOOPGenerator
 from .grpc_proxy import GrpcProxyModel
