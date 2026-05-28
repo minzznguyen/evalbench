@@ -7,8 +7,8 @@ from google.auth.exceptions import DefaultCredentialsError, RefreshError
 # Add generators path to system path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from generators.models import get_generator
-from generators.models.data_engineering_agent import (
+from generators.models import get_generator  # noqa: E402
+from generators.models.data_engineering_agent import (  # noqa: E402
     DataEngineeringAgentGenerator,
     GcpAdcCredentialService,
 )
@@ -17,8 +17,15 @@ from generators.models.data_engineering_agent import (
 def test_data_engineering_agent_generator_setup():
     config = {
         "generator": "data_engineering_agent",
-        "endpoint": "https://geminidataanalytics.googleapis.com/v1/a2a/projects/test/locations/us-west4/agents/dataengineeringagent",
-        "target_workspace": "projects/test/locations/us-west4/repositories/test-repo/workspaces/test-workspace",
+        "endpoint": (
+            "https://geminidataanalytics.googleapis.com/v1/a2a/"
+            "projects/test/locations/us-west4/agents/"
+            "dataengineeringagent"
+        ),
+        "target_workspace": (
+            "projects/test/locations/us-west4/repositories/"
+            "test-repo/workspaces/test-workspace"
+        ),
     }
 
     # Mock google.auth.default during initialization
@@ -58,7 +65,11 @@ def test_generator_setup_missing_endpoint():
 def test_generator_setup_missing_workspace():
     config = {
         "generator": "data_engineering_agent",
-        "endpoint": "https://geminidataanalytics.googleapis.com/v1/a2a/projects/test/locations/us-west4/agents/dataengineeringagent",
+        "endpoint": (
+            "https://geminidataanalytics.googleapis.com/v1/a2a/"
+            "projects/test/locations/us-west4/agents/"
+            "dataengineeringagent"
+        ),
     }
     with pytest.raises(ValueError) as excinfo:
         DataEngineeringAgentGenerator(config)
@@ -68,7 +79,9 @@ def test_generator_setup_missing_workspace():
 @pytest.mark.anyio
 @patch("google.auth.default")
 async def test_get_credentials_error_resiliency_default(mock_auth_default):
-    mock_auth_default.side_effect = DefaultCredentialsError("Credentials missing.")
+    mock_auth_default.side_effect = DefaultCredentialsError(
+        "Credentials missing."
+    )
     service = GcpAdcCredentialService()
 
     with pytest.raises(DefaultCredentialsError):
@@ -87,5 +100,3 @@ async def test_get_credentials_error_resiliency_refresh(mock_auth_default):
 
     with pytest.raises(RefreshError):
         await service.get_credentials("oauth", None)
-
-
