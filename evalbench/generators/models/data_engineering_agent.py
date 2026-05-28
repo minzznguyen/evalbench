@@ -51,12 +51,12 @@ class GcpAdcCredentialService(CredentialService):
                 "Credentials: %s",
                 e,
             )
-            return None
+            raise
         except Exception as e:
             self.logger.exception(
                 "Unexpected error while fetching GCP ADC credentials: %s", e
             )
-            return None
+            raise
 
 
 class DataEngineeringAgentGenerator(QueryGenerator):
