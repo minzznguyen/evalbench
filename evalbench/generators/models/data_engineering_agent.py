@@ -14,9 +14,7 @@ from .generator import QueryGenerator
 class GcpAdcCredentialService(CredentialService):
     """GCP Application Default Credentials (ADC) service for A2A SDK.
 
-    This provider is concurrency-safe, non-blocking, and dynamically caches
-    tokens to prevent redundant refreshes on the hot path. It intentionally
-    only services OAuth/OAuth2 schemes.
+    This provider only services OAuth/OAuth2 schemes.
     """
 
     def __init__(self):
@@ -43,7 +41,9 @@ class GcpAdcCredentialService(CredentialService):
                 if self.credentials is None:
                     credentials, _ = await asyncio.to_thread(
                         google.auth.default,
-                        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                        scopes=[
+                            "https://www.googleapis.com/auth/cloud-platform"
+                        ]
                     )
                     self.credentials = credentials
 
