@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import subprocess
 from typing import Any
 
 from a2a.client import ClientCallContext
@@ -15,35 +14,46 @@ from .generator import QueryGenerator
 class GcpAdcCredentialService(CredentialService):
     """GCP Application Default Credentials (ADC) service for A2A SDK.
 
-    This provider intentionally only services OAuth/OAuth2 schemes.
+    This provider is concurrency-safe, non-blocking, and dynamically caches
+    tokens to prevent redundant refreshes on the hot path. It intentionally
+    only services OAuth/OAuth2 schemes.
     """
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.credentials = None
+        self._lock = None
 
     async def get_credentials(
         self,
         security_scheme_name: str,
         context: ClientCallContext | None,
-    ) -> str | None:
+    ) -> str:
         if security_scheme_name.lower() not in ("oauth", "oauth2"):
             raise ValueError(
                 f"GcpAdcCredentialService only services 'oauth' or 'oauth2' "
                 f"schemes, got '{security_scheme_name}'"
             )
 
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+
         try:
-            if self.credentials is None:
-                self.credentials, _ = google.auth.default(
-                    scopes=["https://www.googleapis.com/auth/cloud-platform"]
-                )
+            async with self._lock:
+                if self.credentials is None:
+                    credentials, _ = await asyncio.to_thread(
+                        google.auth.default,
+                        scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                    )
+                    self.credentials = credentials
 
-            if not self.credentials.valid:
-                await asyncio.to_thread(self.credentials.refresh, Request())
+                if not self.credentials.valid:
+                    await asyncio.to_thread(
+                        self.credentials.refresh, Request()
+                    )
 
-            self.logger.debug("Retrieved GCP ADC token successfully.")
-            return self.credentials.token
+                self.logger.debug("Retrieved GCP ADC token successfully.")
+                return self.credentials.token
 
         except (DefaultCredentialsError, RefreshError) as e:
             self.logger.error(
@@ -89,7 +99,7 @@ class DataEngineeringAgentGenerator(QueryGenerator):
             "GcpAdcCredentialService."
         )
 
-    def generate_internal(self, prompt: str) -> subprocess.CompletedProcess:
+    def generate_internal(self, prompt: str) -> Any:
         """Stubbed messaging logic for WIP scaffolding (Task 1.3)."""
         raise NotImplementedError(
             "Task 1.3 DEA A2A messaging logic in generate_internal is "
