@@ -192,12 +192,12 @@ class Evaluator:
                 score_future_to_eval[self.scoringrunner.futures[-1]
                                      ] = eval_output
             except Exception as e:
-
+                exc_msg = str(e) or type(e).__name__
                 logging.error(
                     "Failed to acquire DB connection from queue for database"
-                    f" '{eval_output.get('database')}': {e}"
+                    f" '{eval_output.get('database')}': {exc_msg}"
                 )
-                eval_output["generated_error"] = f"Failed to acquire DB connection: {e}"
+                eval_output["generated_error"] = f"Failed to acquire DB connection: {exc_msg}"
                 record_successful_sql_exec(progress_reporting)
                 work = scorework.ScorerWork(
                     self.config, eval_output, scoring_results, global_models

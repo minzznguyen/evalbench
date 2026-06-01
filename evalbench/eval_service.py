@@ -44,6 +44,11 @@ from util import get_SessionManager
 SESSIONMANAGER = get_SessionManager()
 
 
+class EmptyEvalResultError(Exception):
+    """Raised when an Eval run produces no result rows — a client/config issue,
+    not a server fault. Translated to gRPC FAILED_PRECONDITION."""
+
+
 class SessionManagerInterceptor(grpc.aio.ServerInterceptor):
     def __init__(self, tag: str, rpc_id: Optional[str] = None) -> None:
         self.tag = tag
@@ -236,6 +241,12 @@ class EvalServicer(eval_service_pb2_grpc.EvalServiceServicer):
                         f"Eval: Cannot run tear_down_script, file not found at '{tear_down_script}'")
 
             return eval_response_pb2.EvalResponse(response=response, session_id=session_id)
+
+        except EmptyEvalResultError as e:
+            logging.warning(f"Eval produced no results: {e}")
+            context.set_code(grpc.StatusCode.FAILED_PRECONDITION)
+            context.set_details(str(e))
+            return eval_response_pb2.EvalResponse(session_id=session_id)
 
         except Exception as e:
             display_config = "Unknown"
@@ -451,7 +462,11 @@ def _process_results(
     )
     results = load_json(results_tf)
     results_df = report.get_dataframe(results)
-    assert not results_df.empty, "There were no matching evals in this run."
+    if results_df.empty:
+        raise EmptyEvalResultError(
+            "No matching evals were produced for this run. Check that the dataset, "
+            "dialect filters, and database configuration line up."
+        )
     report.quick_summary(results_df)
     scores = load_json(scores_tf)
     if multi_trial_scores_tf:
