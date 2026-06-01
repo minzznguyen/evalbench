@@ -1,0 +1,17 @@
+{
+  "scenarios": [
+    {
+      "id": "dea-programmatic-scenario-0",
+      "starting_prompt": "Please read the schema of the BigQuery table bq-dataworkeragent-test.james_mock_data.raw_login_events.",
+      "max_turns": 2,
+      "conversation_plan": [
+        "Verify that on the first turn the agent listed the table columns user_id, event_timestamp, ip_address, device_type, login_successful, session_id.",
+        "Verify that on the second turn the agent successfully reversed the columns order in a conversational text/table format, showing session_id first and user_id last."
+      ],
+      "binary_rubric": [
+        "Verify that on the first turn the agent listed the table columns user_id, event_timestamp, ip_address, device_type, login_successful, session_id.",
+        "Verify that on the second turn the agent successfully reversed the columns order in a conversational text/table format, showing session_id first and user_id last."
+      ]
+    }
+  ]
+}

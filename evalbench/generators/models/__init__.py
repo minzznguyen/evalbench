@@ -45,6 +45,9 @@ def get_generator(global_models, model_config_path: str, db: DB = None):
             model = CodexCliGenerator(config)
         if config["generator"] == "data_engineering_agent":
             model = DataEngineeringAgentGenerator(config)
+        if config["generator"] == "data_engineering_agent_cli_adapter":
+            from .data_engineering_agent_adapter import DataEngineeringAgentCliAdapter
+            model = DataEngineeringAgentCliAdapter(config)
         if not model:
             raise ValueError(f"Unknown Generator {config['generator']}")
 

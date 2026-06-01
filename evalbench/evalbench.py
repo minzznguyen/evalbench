@@ -87,9 +87,12 @@ def eval(experiment_config: str):
 
         # Run evaluations
         evaluator.evaluate(flatten_dataset(dataset))
-        job_id, run_time, results_tf, scores_tf, multi_trial_scores_tf = (
-            evaluator.process()
-        )
+        process_result = evaluator.process()
+        if len(process_result) == 4:
+            job_id, run_time, results_tf, scores_tf = process_result
+            multi_trial_scores_tf = None
+        else:
+            job_id, run_time, results_tf, scores_tf, multi_trial_scores_tf = process_result
 
         # Create Dataframes for reporting
         if results_tf is not None and scores_tf is not None:

@@ -1,0 +1,5 @@
+generator: "data_engineering_agent"
+endpoint: "https://geminidataanalytics.googleapis.com/v1/a2a/projects/bq-dataworkeragent-test/locations/us-west4/agents/dataengineeringagent"
+target_workspace: "projects/bq-dataworkeragent-test/locations/us-west4/repositories/agent_demo_dataform/workspaces/james_test_123"
+gcp_project_id: "bq-dataworkeragent-test"
+execs_per_minute: 10

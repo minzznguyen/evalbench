@@ -5,6 +5,7 @@ from evaluator.interactorchestrator import InteractOrchestrator
 from evaluator.dataagentorchestrator import DataAgentOrchestrator
 from evaluator.agentorchestrator import AgentOrchestrator
 from evaluator.streamingorchestrator import StreamingOrchestrator
+from evaluator.deaorchestrator import DeaOrchestrator
 import logging
 
 
@@ -20,6 +21,8 @@ def get_orchestrator(config, db_configs, setup_config, report_progress=False):
         return AgentOrchestrator(config, db_configs, setup_config, report_progress)
     elif orchestrator_type == "cortado":
         return CortadoOrchestrator(config, db_configs, setup_config, report_progress)
+    elif orchestrator_type == "dea":
+        return DeaOrchestrator(config, db_configs, setup_config, report_progress)
     else:
         return Orchestrator(config, db_configs, setup_config, report_progress)
 
