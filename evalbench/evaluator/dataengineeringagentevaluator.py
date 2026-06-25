@@ -51,6 +51,11 @@ class DataEngineeringAgentEvaluator:
         self.agent_runners = runner_config.get("agent_runners", 10)
         self.agentrunner = mprunner.MPRunner(self.agent_runners)
 
+        reporting_config = self.config.get("reporting") or {}
+        self.gcs_config = {}
+        if isinstance(reporting_config, dict):
+            self.gcs_config = reporting_config.get("gcs_export") or {}
+
     def evaluate(
         self,
         dataset: List[EvalDeaRequest],
@@ -59,6 +64,13 @@ class DataEngineeringAgentEvaluator:
     ):
         """Runs the conversational scenarios in a parallel thread pool."""
         eval_outputs: List[dict[str, Any]] = []
+        if not self.gcs_config.get("bucket_name"):
+            logger.error(
+                "GCS export is required but 'bucket_name' is missing from "
+                "configuration."
+            )
+            raise ValueError("GCS export 'bucket_name' is required.")
+
         scoring_results: List[dict[str, Any]] = []
         logger.info("Running pure conversational DEA evaluation")
 
@@ -131,6 +143,24 @@ class DataEngineeringAgentEvaluator:
             logger.exception("Failed to initialize dynamic cloud sandbox: %s", err)
             raise
         finally:
+            bucket_name = self.gcs_config.get("bucket_name")
+            if bucket_name and created_repo_name:
+                try:
+                    logger.info(
+                        "Exporting workspace artifacts to GCS bucket: %s...",
+                        bucket_name,
+                    )
+                    gcs_prefix = f"runs/{job_id}"
+                    helper.upload_archive_to_gcs(
+                        repository_id=repo_id,
+                        workspace_id=workspace_id,
+                        bucket_name=bucket_name,
+                        gcs_prefix=gcs_prefix,
+                    )
+                    logger.info("Successfully exported all artifacts to GCS!")
+                except Exception as export_err:
+                    logger.exception("Failed to export workspace artifacts to GCS")
+
             if created_repo_name:
                 try:
                     logger.info("Cleaning up temporary cloud resources...")

@@ -487,3 +487,49 @@ def test_find_agent_text_recursive_accumulation():
     assert _find_agent_text_recursive(None) == ""
     assert _find_agent_text_recursive([]) == ""
     assert _find_agent_text_recursive({}) == ""
+
+
+def test_evaluator_evaluate_missing_gcs_export_raises_error(valid_config):
+    config = valid_config.copy()
+    config["reporting"] = {}
+
+    evaluator = DataEngineeringAgentEvaluator(config)
+    dataset = [EvalDeaRequest({"starting_prompt": "test", "id": "1"})]
+
+    with pytest.raises(ValueError) as excinfo:
+        evaluator.evaluate(dataset, "dea-job-123", datetime.datetime.now())
+
+    assert "GCS export 'bucket_name' is required" in str(excinfo.value)
+
+
+@patch("evaluator.dataengineeringagentevaluator.DataformHelper")
+@patch("evaluator.dataengineeringagentevaluator.SimulatedUser")
+def test_evaluator_evaluate_defensive_cleanup_on_gcs_failure(
+    mock_sim_user_class: MagicMock,
+    mock_helper_class: MagicMock,
+    valid_config,
+):
+    mock_helper = MagicMock()
+    mock_helper_class.return_value = mock_helper
+    mock_helper.create_repository.return_value = "repo-name"
+    mock_helper.create_workspace.return_value = "workspace-name"
+
+    config = valid_config.copy()
+    config["reporting"] = {
+        "gcs_export": {"bucket_name": "test-bucket"}
+    }
+
+    mock_helper.upload_archive_to_gcs.side_effect = Exception(
+        "GCS Upload Timeout"
+    )
+
+    evaluator = DataEngineeringAgentEvaluator(config)
+
+    evaluator.generator = MagicMock()
+    evaluator.agentrunner = MagicMock()
+
+    dataset = [EvalDeaRequest({"starting_prompt": "test", "id": "1"})]
+
+    evaluator.evaluate(dataset, "dea-job-123", datetime.datetime.now())
+
+    mock_helper.delete_repository.assert_called_once_with("evalbench-123")

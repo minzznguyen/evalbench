@@ -1,9 +1,12 @@
 """Utility for managing temporary GCP Dataform repositories and workspaces."""
 
+import io
 import logging
+import zipfile
 
 from google.api_core import exceptions as api_exceptions
 from google.cloud import dataform_v1beta1
+from google.cloud import storage
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +23,7 @@ class DataformHelper:
         """
         self.client = dataform_v1beta1.DataformClient()
         self.parent = f"projects/{project_id}/locations/{location}"
+        self.project_id = project_id
 
     def create_repository(self, repository_id: str) -> str:
         """Creates a new Dataform repository in the project and location.
@@ -144,5 +148,78 @@ class DataformHelper:
             logger.exception(
                 "Failed to delete repository and nested resources: %s",
                 repository_id,
+            )
+            raise
+
+    def upload_archive_to_gcs(
+        self,
+        repository_id: str,
+        workspace_id: str,
+        bucket_name: str,
+        gcs_prefix: str,
+    ) -> None:
+        """Exports all workspace files recursively to a GCS bucket.
+
+        Args:
+            repository_id: The ID of the parent repository.
+            workspace_id: The unique ID for the workspace.
+            bucket_name: The target GCS bucket name.
+            gcs_prefix: The GCS object path prefix (e.g. 'runs/job-123').
+        """
+        repository_path = f"{self.parent}/repositories/{repository_id}"
+        workspace_path = f"{repository_path}/workspaces/{workspace_id}"
+        logger.info(
+            "Exporting workspace %s artifacts to GCS bucket: %s...",
+            workspace_path,
+            bucket_name,
+        )
+
+        gcs_client = storage.Client(project=self.project_id)
+        bucket = gcs_client.bucket(bucket_name)
+
+        try:
+            page_result = self.client.search_files(
+                request={"workspace": workspace_path}
+            )
+            file_count = 0
+            with io.BytesIO() as zip_buffer:
+                with zipfile.ZipFile(
+                    zip_buffer, "w", zipfile.ZIP_DEFLATED
+                ) as zipf:
+                    for result in page_result:
+                        if result.file and result.file.path:
+                            file_path = result.file.path
+                            file_response = self.client.read_file(
+                                request={
+                                    "workspace": workspace_path,
+                                    "path": file_path,
+                                }
+                            )
+                            file_data = file_response.file_contents
+
+                            zipf.writestr(file_path, file_data)
+                            logger.info("Added file to archive: %s", file_path)
+                            file_count += 1
+
+                zip_bytes = zip_buffer.getvalue()
+
+            # Upload the single ZIP archive to GCS directly
+            gcs_blob_path = f"{gcs_prefix}/workspace.zip"
+            blob = bucket.blob(gcs_blob_path)
+            blob.upload_from_string(zip_bytes, content_type="application/zip")
+
+            logger.info(
+                "Successfully exported %d files in ZIP archive (%d bytes) "
+                "to GCS bucket: gs://%s/%s",
+                file_count,
+                len(zip_bytes),
+                bucket_name,
+                gcs_blob_path,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to export workspace %s artifacts to GCS bucket %s",
+                workspace_path,
+                bucket_name,
             )
             raise

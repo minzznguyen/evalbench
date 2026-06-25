@@ -1,7 +1,9 @@
 """Unit tests for DataformHelper utility."""
 
+import io
 from typing import Generator
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
+import zipfile
 
 from google.api_core import exceptions as api_exceptions
 from google.cloud import dataform_v1beta1
@@ -168,3 +170,78 @@ def test_delete_repository_exception(
         helper.delete_repository(REPO_ID)
 
     assert "failed" in str(exc_info.value)
+
+
+@patch("util.dataform.storage.Client")
+def test_upload_archive_to_gcs_success(
+    mock_gcs_client_class: MagicMock,
+    mock_client: MagicMock,
+    helper: DataformHelper,
+):
+    # Mock search_files response returning one file search result
+    result_file = MagicMock()
+    result_file.file.path = "definitions/my_view.sqlx"
+    mock_client.search_files.return_value = [result_file]
+
+    mock_file_response = MagicMock()
+    mock_file_response.file_contents = b"SELECT 1 as value"
+    mock_client.read_file.return_value = mock_file_response
+
+    mock_gcs_client = MagicMock()
+    mock_gcs_client_class.return_value = mock_gcs_client
+    mock_bucket = MagicMock()
+    mock_gcs_client.bucket.return_value = mock_bucket
+    mock_blob = MagicMock()
+    mock_bucket.blob.return_value = mock_blob
+
+    helper.upload_archive_to_gcs(
+        REPO_ID, WORKSPACE_ID, "test-bucket", "runs/job-123"
+    )
+
+    expected_workspace_path = (
+        f"projects/{PROJECT_ID}/locations/{LOCATION}"
+        f"/repositories/{REPO_ID}/workspaces/{WORKSPACE_ID}"
+    )
+    # Assert search_files was called with the correct workspace path
+    mock_client.search_files.assert_called_once_with(
+        request={"workspace": expected_workspace_path}
+    )
+    mock_client.read_file.assert_called_once_with(
+        request={
+            "workspace": expected_workspace_path,
+            "path": "definitions/my_view.sqlx",
+        }
+    )
+
+    mock_gcs_client_class.assert_called_once_with(project=PROJECT_ID)
+    mock_gcs_client.bucket.assert_called_once_with("test-bucket")
+    mock_bucket.blob.assert_called_once_with("runs/job-123/workspace.zip")
+
+    mock_blob.upload_from_string.assert_called_once_with(
+        ANY, content_type="application/zip"
+    )
+    uploaded_bytes = mock_blob.upload_from_string.call_args.args[0]
+
+    with zipfile.ZipFile(io.BytesIO(uploaded_bytes)) as zip_file:
+        assert zip_file.namelist() == ["definitions/my_view.sqlx"]
+        assert (
+            zip_file.read("definitions/my_view.sqlx")
+            == b"SELECT 1 as value"
+        )
+
+
+@patch("util.dataform.storage.Client")
+def test_upload_archive_to_gcs_exception(
+    mock_gcs_client_class: MagicMock,
+    mock_client: MagicMock,
+    helper: DataformHelper,
+):
+    mock_client.search_files.side_effect = Exception("api failed")
+
+    with pytest.raises(Exception) as exc_info:
+        helper.upload_archive_to_gcs(
+            REPO_ID, WORKSPACE_ID, "test-bucket", "runs/job-123"
+        )
+
+    assert "api failed" in str(exc_info.value)
+    mock_gcs_client_class.assert_called_once_with(project=PROJECT_ID)
