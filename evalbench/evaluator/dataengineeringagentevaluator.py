@@ -13,6 +13,7 @@ from work.agentgenwork import AgentGenWork
 from evaluator.simulateduser import SimulatedUser
 from work.agentscorework import AgentScoreWork
 from util.config import load_yaml_config
+from util.dataform import DataformHelper
 
 # Module-level logger
 logger = logging.getLogger(__name__)
@@ -43,6 +44,8 @@ class DataEngineeringAgentEvaluator:
             model_config.update(config)
 
         self.generator = DataEngineeringAgentGenerator(model_config)
+        self.project_id = model_config.get("gcp_project_id", "")
+        self.location = model_config.get("gcp_region", "")
 
         runner_config = self.config.get("runners", {})
         self.agent_runners = runner_config.get("agent_runners", 10)
@@ -59,36 +62,84 @@ class DataEngineeringAgentEvaluator:
         scoring_results: List[dict[str, Any]] = []
         logger.info("Running pure conversational DEA evaluation")
 
-        self.agentrunner.futures.clear()
+        job_uuid = job_id.removeprefix("dea-job-")
+        repo_id = f"evalbench-{job_uuid}"
 
-        metadata = {
-            "dialects": self.config.get("dialects", []),
-            "database": self.config.get("database", "unknown"),
-            "scorers": self.config.get("scorers", {}),
-        }
+        # Derive workspace_id from the dataset config file name
+        dataset_path = self.config.get("dataset_config", "")
+        workspace_id = (
+            dataset_path.split("/")[-1]
+            .split(".evalset.json")[0]
+            .split(".json")[0]
+            .lower()
+            .replace("_", "-")
+            .replace(" ", "-")
+        )
 
-        # Submit scenarios concurrently to parallel worker threads
-        for item in dataset:
-            simulated_user = SimulatedUser(self.config)
-            work = AgentGenWork(
-                processor=self.process_scenario,
-                eval_result=item,
-                job_id=job_id,
-                metadata=metadata,
-                simulated_user=simulated_user,
+        helper = DataformHelper(self.project_id, self.location)
+
+        created_repo_name = None
+
+        try:
+            created_repo_name = helper.create_repository(repo_id)
+            workspace_name = helper.create_workspace(
+                repo_id, workspace_id
             )
-            self.agentrunner.execute_work(work)
 
-        futures = self.agentrunner.futures
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                modified_item = future.result()
-                if hasattr(modified_item, "agent_results"):
-                    eval_outputs.extend(modified_item.agent_results)
-                if hasattr(modified_item, "scoring_results"):
-                    scoring_results.extend(modified_item.scoring_results)
-            except Exception as e:
-                logger.exception(f"Error getting result from future: {e}")
+            # Validate workspace exists before running.
+            if not workspace_name:
+                raise ValueError(
+                    "GCP Resource Workspace URI must be dynamically provisioned "
+                    "and present on the evaluation item."
+                )
+
+            for item in dataset:
+                item.gcp_resource_id = workspace_name
+
+            self.agentrunner.futures.clear()
+
+            metadata = {
+                "dialects": self.config.get("dialects", []),
+                "database": self.config.get("database", "unknown"),
+                "scorers": self.config.get("scorers", {}),
+            }
+
+            # Submit scenarios concurrently to parallel worker threads
+            for item in dataset:
+                simulated_user = SimulatedUser(self.config)
+                work = AgentGenWork(
+                    processor=self.process_scenario,
+                    eval_result=item,
+                    job_id=job_id,
+                    metadata=metadata,
+                    simulated_user=simulated_user,
+                )
+                self.agentrunner.execute_work(work)
+
+            futures = self.agentrunner.futures
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    modified_item = future.result()
+                    if hasattr(modified_item, "agent_results"):
+                        eval_outputs.extend(modified_item.agent_results)
+                    if hasattr(modified_item, "scoring_results"):
+                        scoring_results.extend(modified_item.scoring_results)
+                except Exception as e:
+                    logger.exception(f"Error getting result from future: {e}")
+
+        except Exception as err:
+            logger.exception("Failed to initialize dynamic cloud sandbox: %s", err)
+            raise
+        finally:
+            if created_repo_name:
+                try:
+                    logger.info("Cleaning up temporary cloud resources...")
+                    helper.delete_repository(repo_id)
+                except Exception as cleanup_err:
+                    logger.error(
+                        "Failed to clean up Dataform resources: %s",
+                        cleanup_err,
+                    )
 
         return eval_outputs, scoring_results
 
@@ -193,6 +244,7 @@ class DataEngineeringAgentEvaluator:
             "accumulated_skills": [],
             "job_id": job_id,
             "metadata": metadata,
+            "gcp_resource_id": getattr(eval_result, "gcp_resource_id", None),
         }
 
         score_work = AgentScoreWork(

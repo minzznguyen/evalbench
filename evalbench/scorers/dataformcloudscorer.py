@@ -1,5 +1,6 @@
 """Cloud Dataform Scorers using Google Cloud Dataform API."""
 
+import json
 import time
 from typing import Tuple, List, Any
 from google.cloud import dataform_v1beta1
@@ -17,8 +18,6 @@ class DataformCloudBaseScorer(comparator.Comparator):
 
         project = config.get("gcp_project_id")
         location = config.get("gcp_region")
-        repository = config.get("dataform_repository")
-        workspace = config.get("dataform_workspace")
 
         if not project:
             raise ValueError(
@@ -30,22 +29,9 @@ class DataformCloudBaseScorer(comparator.Comparator):
                 "Configuration key 'gcp_region' is required for "
                 "DataformCloudBaseScorer."
             )
-        if not repository:
-            raise ValueError(
-                "Configuration key 'dataform_repository' is required for "
-                "DataformCloudBaseScorer."
-            )
-        if not workspace:
-            raise ValueError(
-                "Configuration key 'dataform_workspace' is required for "
-                "DataformCloudBaseScorer."
-            )
 
-        self.repo_name = (
-            f"projects/{project}/locations/{location}/"
-            f"repositories/{repository}"
-        )
-        self.workspace_name = f"{self.repo_name}/workspaces/{workspace}"
+        self.repo_name = None
+        self.workspace_name = None
         self.timeout_seconds = int(config.get("timeout_seconds"))
 
         # Setup client
@@ -102,12 +88,33 @@ class DataformCloudBaseScorer(comparator.Comparator):
         return state, invocation_name, failed_actions
 
     def run_dataform_cloud_command(
-        self, command: List[str]
+        self, command: List[str], generated_eval_result: Any = None
     ) -> Tuple[float, str]:
         """Executes a Dataform cloud command.
 
         Returns a score and analysis.
         """
+        # Resolve dynamic repository and workspace paths from execution results
+        workspace_path = ""
+        if isinstance(generated_eval_result, dict):
+            workspace_path = generated_eval_result.get("gcp_resource_id", "")
+        elif isinstance(generated_eval_result, str) and generated_eval_result:
+            try:
+                context = json.loads(generated_eval_result)
+                workspace_path = context.get("gcp_resource_id", "")
+            except Exception:
+                pass
+
+        if workspace_path:
+            self.workspace_name = workspace_path
+            self.repo_name = workspace_path.split("/workspaces/")[0]
+
+        if not self.repo_name or not self.workspace_name:
+            raise ValueError(
+                "Dataform repository and workspace names must be provided "
+                "either in configuration or dynamically via gcp_resource_id."
+            )
+
         try:
             # NOTE: When both dataform_cloud_compile and dataform_cloud_run scorers
             # are enabled for an evaluation run, each scorer independently calls
@@ -210,7 +217,9 @@ class DataformCloudCompileScorer(DataformCloudBaseScorer):
         generated_eval_result: str,
         generated_error: str,
     ) -> Tuple[float, str]:
-        return self.run_dataform_cloud_command(["dataform", "compile"])
+        return self.run_dataform_cloud_command(
+            ["dataform", "compile"], generated_eval_result
+        )
 
 
 class DataformCloudRunScorer(DataformCloudBaseScorer):
@@ -233,4 +242,6 @@ class DataformCloudRunScorer(DataformCloudBaseScorer):
         generated_eval_result: str,
         generated_error: str,
     ) -> Tuple[float, str]:
-        return self.run_dataform_cloud_command(["dataform", "run"])
+        return self.run_dataform_cloud_command(
+            ["dataform", "run"], generated_eval_result
+        )

@@ -3,11 +3,9 @@
 This directory contains a sample configuration for evaluating the Data Engineering Agent (DEA) in a 100% programmatic, CLI-free, and SQL-free stateful multi-turn conversation.
 
 ## 1. Configure the Generator Model
-The model config is located at `datasets/model_configs/gcp_data_engineering_agent_model.yaml`. It uses environment variables to dynamically resolve your GCP coordinates and target Dataform workspace:
+The model config is located at `datasets/model_configs/gcp_data_engineering_agent_model.yaml`. It uses environment variables to dynamically resolve your GCP coordinates:
 *   `gcp_project_id`: Read from `EVAL_GCP_PROJECT_ID`
 *   `gcp_region`: Read from `EVAL_GCP_PROJECT_REGION` (defaults to `us-west4` if unset)
-*   `dataform_repository_id`: Read from `EVAL_DEA_REPOSITORY_ID`
-*   `dataform_workspace_id`: Read from `EVAL_DEA_WORKSPACE_ID`
 
 ## 2. Supply Your Evaluation Dataset
 The dataset file is defined in `datasets/dea-tools/dea-live-conversational.evalset.json`. It defines conversational turns (such as reading table schemas and modifying schemas) along with evaluation metrics and rubrics.
@@ -20,18 +18,18 @@ To run the evaluation, make sure you are in the root directory of the `evalbench
 PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python \
 EVAL_GCP_PROJECT_ID=<YOUR_GCP_PROJECT_ID> \
 EVAL_GCP_PROJECT_REGION=<YOUR_GCP_REGION> \
-EVAL_DEA_REPOSITORY_ID=<YOUR_REPO_ID> \
-EVAL_DEA_WORKSPACE_ID=<YOUR_WORKSPACE_ID> \
 .venv/bin/python3 evalbench/evalbench.py --experiment_config=datasets/dea-tools/example_run_config.yaml
 ```
 
 ### Key Environment Variables:
 *   `EVAL_GCP_PROJECT_ID`: The GCP Project ID where your DEA agent is deployed.
 *   `EVAL_GCP_PROJECT_REGION`: The GCP Region (e.g., `us-west4`) of the agent.
-*   `EVAL_DEA_REPOSITORY_ID`: The target Dataform repository ID (short name).
-*   `EVAL_DEA_WORKSPACE_ID`: The target Dataform workspace ID (short name).
 
 ## 4. Inspect Results
+
+> [!NOTE]
+> **Automated Sandbox**: A temporary, isolated Dataform repository and workspace are automatically created for each run and cleaned up afterward.
+
 Upon completion, results will be generated in two locations:
 
 ### Local Files (under the `results/` folder):
