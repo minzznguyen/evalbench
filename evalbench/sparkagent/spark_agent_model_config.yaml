@@ -1,0 +1,8 @@
+generator: "data_engineering_agent"
+host: "staging-geminidataanalytics.sandbox.googleapis.com"
+gcp_project_id: !ENV ${EVAL_GCP_PROJECT_ID}
+gcp_region: !ENV ${EVAL_GCP_PROJECT_REGION:us-central1}
+agent_id: "sparkagent"
+agent_type: "SPARK_AGENT"
+gcp_resource_id: !ENV projects/${EVAL_GCP_PROJECT_ID}/locations/${EVAL_GCP_PROJECT_REGION:us-central1}
+execs_per_minute: 10

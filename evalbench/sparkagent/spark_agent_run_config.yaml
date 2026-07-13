@@ -1,0 +1,17 @@
+orchestrator: dea
+dataset_format: dea-format
+model_config: evalbench/sparkagent/spark_agent_model_config.yaml
+simulated_user_model_config: datasets/model_configs/gemini_2.5_pro_model.yaml
+dataset_config: evalbench/sparkagent/spark_agent_evalset.json
+env:
+  SCENARIO_ID: "spark-agent-cleaning"
+dataform_repository: dummy-repo
+dataform_workspace: dummy-workspace
+gcp_project_id: !ENV ${EVAL_GCP_PROJECT_ID}
+gcp_region: !ENV ${EVAL_GCP_PROJECT_REGION:us-central1}
+scorers: {}
+reporting:
+  csv:
+    output_directory: evalbench/sparkagent/results
+runners:
+  agent_runners: 1

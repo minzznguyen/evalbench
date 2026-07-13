@@ -1,0 +1,22 @@
+job_id,run_time,config,value
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,db_configs,[]
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,experiment_config.orchestrator,dea
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,experiment_config.dataset_format,dea-format
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,experiment_config.model_config,evalbench/sparkagent/spark_agent_model_config.yaml
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,experiment_config.simulated_user_model_config,datasets/model_configs/gemini_2.5_pro_model.yaml
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,experiment_config.dataset_config,evalbench/sparkagent/spark_agent_evalset.json
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,experiment_config.env.SCENARIO_ID,spark-agent-cleaning
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,experiment_config.dataform_repository,dummy-repo
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,experiment_config.dataform_workspace,dummy-workspace
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,experiment_config.gcp_project_id,bq-dataworkeragent-test
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,experiment_config.gcp_region,us-central1
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,experiment_config.reporting.csv.output_directory,evalbench/sparkagent/results
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,experiment_config.runners.agent_runners,1
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,model_config.generator,data_engineering_agent
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,model_config.host,staging-geminidataanalytics.sandbox.googleapis.com
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,model_config.gcp_project_id,bq-dataworkeragent-test
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,model_config.gcp_region,us-central1
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,model_config.agent_id,sparkagent
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,model_config.agent_type,SPARK_AGENT
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,model_config.gcp_resource_id,projects/bq-dataworkeragent-test/locations/us-central1
+dea-job-89d8513c-e853-413d-9077-02da5c8de968,2026-07-13 21:42:47.336256,model_config.execs_per_minute,10

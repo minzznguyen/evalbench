@@ -1,0 +1,11 @@
+{
+  "scenarios": [
+    {
+      "id": "spark-agent-cleaning-case",
+      "starting_prompt": "Create a notebook named '07-06-notebook.ipynb' to do simple data cleaning using `bq-dataworkeragent-test.auto_cleaning.ecom_customers_polluted`. You have my approval",
+      "max_turns": 1,
+      "conversation_plan": [],
+      "binary_rubric": []
+    }
+  ]
+}

@@ -50,11 +50,15 @@ FINISH_REASON_URI = (
     "https://geminidataanalytics.googleapis.com/a2a/extensions/"
     "finishreason/v1"
 )
+AGENT_TYPE_URI = (
+    "https://geminidataanalytics.googleapis.com/a2a/extensions/"
+    "agenttype/v1"
+)
 
 # All required A2A Extension Headers combined
 ALL_EXTENSIONS = (
     f"{MESSAGE_LEVEL_URI},{INSTRUCTION_URI},{GCP_RESOURCE_URI},"
-    f"{CONVERSATION_TOKEN_URI},{FINISH_REASON_URI}"
+    f"{CONVERSATION_TOKEN_URI},{FINISH_REASON_URI},{AGENT_TYPE_URI}"
 )
 
 logger = logging.getLogger(__name__)
@@ -211,6 +215,9 @@ class DataEngineeringAgentGenerator(QueryGenerator):
         self.name = "data_engineering_agent"
         gcp_project_id = querygenerator_config.get("gcp_project_id", "")
         gcp_region = querygenerator_config.get("gcp_region", "")
+        agent_id = querygenerator_config.get("agent_id", "dataengineeringagent")
+        self.agent_type = querygenerator_config.get("agent_type")
+        self.gcp_resource_id = querygenerator_config.get("gcp_resource_id")
 
         if not gcp_project_id:
             raise ValueError(
@@ -223,10 +230,11 @@ class DataEngineeringAgentGenerator(QueryGenerator):
                 "DataEngineeringAgentGenerator."
             )
 
+        host = querygenerator_config.get("host", "geminidataanalytics.googleapis.com")
         self.endpoint = (
-            f"https://geminidataanalytics.googleapis.com/v1/a2a/projects/"
+            f"https://{host}/v1/a2a/projects/"
             f"{gcp_project_id}/locations/{gcp_region}/"
-            f"agents/dataengineeringagent"
+            f"agents/{agent_id}"
         )
 
         self.auth_interceptor = AuthInterceptor(GcpAdcCredentialService())
@@ -245,7 +253,7 @@ class DataEngineeringAgentGenerator(QueryGenerator):
         """Entry point that integrates with DataEngineeringAgentEvaluator."""
         prompt_text = prompt.nl_prompt
         conversation_id = prompt.id
-        target_workspace = getattr(prompt, "gcp_resource_id", None)
+        target_workspace = self.gcp_resource_id or getattr(prompt, "gcp_resource_id", None)
 
         if not target_workspace:
             raise ValueError(
@@ -324,6 +332,10 @@ class DataEngineeringAgentGenerator(QueryGenerator):
         message_req.metadata[GCP_RESOURCE_URI] = {
             "gcpResourceId": target_workspace
         }
+
+        # Configure Agent Type extension if specified
+        if self.agent_type:
+            message_req.metadata[AGENT_TYPE_URI] = self.agent_type
 
         # Handle ConversationToken state memory thread-safely
         token = ""
